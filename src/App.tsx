@@ -53,8 +53,16 @@ function App() {
   const [error, setError] = useState('');
   const [dataset, setDataset] = useState<DashboardDataset>({ rows: [], generatedAt: '' });
 
-  const overviewCounts = useMemo(() => getOverviewCounts(dataset.rows), [dataset.rows]);
   const groupedRows = useMemo(() => groupRows(dataset.rows), [dataset.rows]);
+  const visibleRows = useMemo(
+    () => [...groupedRows.paid, ...groupedRows.trial],
+    [groupedRows.paid, groupedRows.trial],
+  );
+  const visibleDataset = useMemo(
+    () => ({ rows: visibleRows, generatedAt: dataset.generatedAt }),
+    [dataset.generatedAt, visibleRows],
+  );
+  const overviewCounts = useMemo(() => getOverviewCounts(visibleRows), [visibleRows]);
 
   const loadDashboard = async () => {
     setStatus('loading');
@@ -109,7 +117,7 @@ function App() {
   };
 
   const canLoad = status !== 'loading' && token.trim().length > 0 && baseUrl.trim().length > 0;
-  const canExport = dataset.rows.length > 0;
+  const canExport = visibleRows.length > 0;
 
   return (
     <main>
@@ -153,7 +161,7 @@ function App() {
           <button
             type="button"
             className="secondary"
-            onClick={() => downloadCsv(dataset)}
+            onClick={() => downloadCsv(visibleDataset)}
             disabled={!canExport}
           >
             <Download size={16} />
