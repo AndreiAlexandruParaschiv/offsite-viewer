@@ -19,6 +19,9 @@ const INTERNAL_TEST_PAID_CUSTOMERS = new Set([
   'llmo release notes',
   'https://test-tokowaka.testaemcloud.com',
   'https://tokowaka.now',
+  'buzios-vibe.com',
+  'https://buzios-vibe.com',
+  'http://buzios-vibe.com',
 ]);
 
 export const isLlmoSite = (site: SpacecatSite) => Boolean(site.config?.llmo);

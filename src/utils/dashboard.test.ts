@@ -116,6 +116,16 @@ describe('dashboard transforms', () => {
         site: {
           ...site,
           id: 'site-4',
+          baseURL: 'https://buzios-vibe.com/',
+          name: 'Buzios Vibe',
+        },
+        entitlements: paidEntitlements,
+        opportunities: [],
+      }),
+      buildSiteRow({
+        site: {
+          ...site,
+          id: 'site-5',
           baseURL: 'https://customer.example.com',
           name: 'Customer',
         },
