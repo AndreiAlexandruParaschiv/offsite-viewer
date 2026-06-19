@@ -15,10 +15,21 @@ const sourceEntries = Object.entries(OPPORTUNITY_SOURCES) as Array<
 >;
 
 const LLMO_PRODUCT_HINTS = ['llmo', 'LLMO', 'ai-visibility', 'AI_VISIBILITY'];
+const INTERNAL_TEST_PAID_CUSTOMERS = new Set([
+  'llmo release notes',
+  'https://test-tokowaka.testaemcloud.com',
+  'https://tokowaka.now',
+]);
 
 export const isLlmoSite = (site: SpacecatSite) => Boolean(site.config?.llmo);
 
 export const normalizeOpportunityStatus = (status: string | undefined) => status?.trim().toUpperCase();
+
+const normalizeCustomerIdentity = (value: string) => value.trim().toLowerCase().replace(/\/+$/, '');
+
+export const isInternalTestPaidCustomer = (row: SiteOpportunityRow) =>
+  INTERNAL_TEST_PAID_CUSTOMERS.has(normalizeCustomerIdentity(row.siteName)) ||
+  INTERNAL_TEST_PAID_CUSTOMERS.has(normalizeCustomerIdentity(row.baseURL));
 
 export const indicatorFromOpportunities = (
   opportunities: SpacecatOpportunity[],
@@ -117,7 +128,7 @@ export const getOverviewCounts = (rows: SiteOpportunityRow[]) =>
   );
 
 export const groupRows = (rows: SiteOpportunityRow[]) => ({
-  paid: rows.filter((row) => row.customerGroup === 'paid'),
+  paid: rows.filter((row) => row.customerGroup === 'paid' && !isInternalTestPaidCustomer(row)),
   trial: rows.filter((row) => row.customerGroup === 'trial'),
   free: rows.filter((row) => row.customerGroup === 'free'),
 });

@@ -4,6 +4,7 @@ import {
   buildSiteRow,
   customerGroupFromTier,
   getOverviewCounts,
+  groupRows,
   indicatorFromOpportunities,
   isLlmoSite,
   toCsv,
@@ -79,6 +80,51 @@ describe('dashboard transforms', () => {
       cited: 0,
       wikipedia: 1,
     });
+  });
+
+  it('excludes internal test customers from the paid group', () => {
+    const paidEntitlements = [
+      { id: 'ent-1', organizationId: 'org-1', productCode: 'LLMO', tier: 'PAID' },
+    ];
+    const rows = [
+      buildSiteRow({
+        site: { ...site, name: 'LLMO Release Notes' },
+        entitlements: paidEntitlements,
+        opportunities: [],
+      }),
+      buildSiteRow({
+        site: {
+          ...site,
+          id: 'site-2',
+          baseURL: 'https://test-tokowaka.testaemcloud.com/',
+          name: 'Tokowaka test',
+        },
+        entitlements: paidEntitlements,
+        opportunities: [],
+      }),
+      buildSiteRow({
+        site: {
+          ...site,
+          id: 'site-3',
+          baseURL: 'https://tokowaka.now',
+          name: 'Tokowaka now',
+        },
+        entitlements: paidEntitlements,
+        opportunities: [],
+      }),
+      buildSiteRow({
+        site: {
+          ...site,
+          id: 'site-4',
+          baseURL: 'https://customer.example.com',
+          name: 'Customer',
+        },
+        entitlements: paidEntitlements,
+        opportunities: [],
+      }),
+    ];
+
+    expect(groupRows(rows).paid.map((row) => row.siteName)).toEqual(['Customer']);
   });
 
   it('exports current rows to CSV', () => {
