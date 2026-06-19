@@ -176,7 +176,7 @@ function App() {
             <div className="metric" key={sourceKey}>
               <span>{OPPORTUNITY_SOURCES[sourceKey].label}</span>
               <strong>{overviewCounts[sourceKey] ?? 0}</strong>
-              <small>sites visible</small>
+              <small>shown sites with yes</small>
             </div>
           ),
         )}
@@ -185,6 +185,7 @@ function App() {
       <section className="load-state" aria-live="polite">
         <span className={`load-state__dot load-state__dot--${status}`} />
         <span>{progress || (error ? 'Load failed' : `Last loaded ${formatTimestamp(dataset.generatedAt)}`)}</span>
+        {status === 'success' ? <span className="shown-count">{visibleRows.length} sites shown</span> : null}
         {error ? <strong>{error}</strong> : null}
       </section>
 

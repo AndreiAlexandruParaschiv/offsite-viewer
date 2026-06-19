@@ -193,6 +193,11 @@ input:focus {
   font-weight: 700;
 }
 
+.shown-count {
+  color: #415048;
+  font-weight: 800;
+}
+
 .load-state__dot,
 .status-pill__dot {
   display: inline-block;
