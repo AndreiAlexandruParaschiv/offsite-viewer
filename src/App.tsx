@@ -182,7 +182,6 @@ function App() {
 
       <CustomerTable title="Paid customers" rows={groupedRows.paid} defaultOpen />
       <CustomerTable title="Trial customers" rows={groupedRows.trial} defaultOpen />
-      <CustomerTable title="Free / non-paying customers" rows={groupedRows.free} defaultOpen />
     </main>
   );
 }

@@ -36,10 +36,9 @@ The dashboard:
 - treats `NEW` opportunities as visible/green
 - shows `IGNORED` opportunities as ignored/yellow when no visible opportunity exists
 - shows missing opportunity types as red
-- groups sites by LLMO entitlement tier:
+- groups visible tables by LLMO entitlement tier:
   - `PAID` -> Paid customers
   - `FREE_TRIAL` / `TRIAL` -> Trial customers
-  - all other tiers, missing entitlements, and entitlement lookup failures -> Free / non-paying customers
 
 ## Build and test
 
