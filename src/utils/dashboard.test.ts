@@ -106,6 +106,16 @@ describe('dashboard transforms', () => {
         site: {
           ...site,
           id: 'site-3',
+          baseURL: 'https://optimize-at-edge.testaemcloud.com/',
+          name: 'Optimize at Edge',
+        },
+        entitlements: paidEntitlements,
+        opportunities: [],
+      }),
+      buildSiteRow({
+        site: {
+          ...site,
+          id: 'site-4',
           baseURL: 'https://tokowaka.now',
           name: 'Tokowaka now',
         },
@@ -115,7 +125,7 @@ describe('dashboard transforms', () => {
       buildSiteRow({
         site: {
           ...site,
-          id: 'site-4',
+          id: 'site-5',
           baseURL: 'https://buzios-vibe.com/',
           name: 'Buzios Vibe',
         },
@@ -125,7 +135,7 @@ describe('dashboard transforms', () => {
       buildSiteRow({
         site: {
           ...site,
-          id: 'site-5',
+          id: 'site-6',
           baseURL: 'https://customer.example.com',
           name: 'Customer',
         },

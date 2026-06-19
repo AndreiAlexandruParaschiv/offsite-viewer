@@ -18,6 +18,7 @@ const LLMO_PRODUCT_HINTS = ['llmo', 'LLMO', 'ai-visibility', 'AI_VISIBILITY'];
 const INTERNAL_TEST_PAID_CUSTOMERS = new Set([
   'llmo release notes',
   'https://test-tokowaka.testaemcloud.com',
+  'https://optimize-at-edge.testaemcloud.com',
   'https://tokowaka.now',
   'buzios-vibe.com',
   'https://buzios-vibe.com',
