@@ -37,13 +37,12 @@ export function CustomerTable({ title, rows, defaultOpen = true }: CustomerTable
                   <th key={sourceKey}>{OPPORTUNITY_SOURCES[sourceKey].label}</th>
                 ))}
                 <th>Tier</th>
-                <th>Notes</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="empty-cell">
+                  <td colSpan={6} className="empty-cell">
                     No sites in this group.
                   </td>
                 </tr>
@@ -66,9 +65,6 @@ export function CustomerTable({ title, rows, defaultOpen = true }: CustomerTable
                     ))}
                     <td>
                       <span className="tier-label">{row.entitlementTier}</span>
-                    </td>
-                    <td className={row.loadError ? 'error-note' : 'muted-note'}>
-                      {row.loadError ?? 'Loaded'}
                     </td>
                   </tr>
                 ))

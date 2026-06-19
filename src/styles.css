@@ -369,20 +369,6 @@ tbody tr:last-child td {
   font-size: 0.77rem;
 }
 
-.muted-note,
-.error-note {
-  max-width: 280px;
-  font-size: 0.82rem;
-}
-
-.muted-note {
-  color: #657062;
-}
-
-.error-note {
-  color: #9d261f;
-}
-
 .empty-cell {
   color: #657062;
   text-align: center;
