@@ -1,6 +1,6 @@
-# Offsite Opportunities Dashboard
+# Offsite Opportunities Viewer
 
-Dashboard for LLMO offsite opportunity coverage across Reddit, YouTube, Cited, and Wikipedia.
+Viewer for LLMO offsite opportunity coverage across Reddit, YouTube, Cited, and Wikipedia.
 
 ## Run locally
 
@@ -15,7 +15,7 @@ The app defaults to the production LLMO API base URL:
 https://llmo.experiencecloud.live/api/v1
 ```
 
-Paste an IMS bearer token or Spacecat session token into the dashboard before loading data. The token is stored in `sessionStorage` only and sent as:
+Paste an IMS bearer token or Spacecat session token into the viewer before loading data. The token is stored in `sessionStorage` only and sent as:
 
 ```text
 Authorization: Bearer <token>
@@ -23,7 +23,7 @@ Authorization: Bearer <token>
 
 ## Data flow
 
-The dashboard:
+The viewer:
 
 - pages through `GET /sites?limit=500` until all sites are loaded
 - keeps LLMO sites where `site.config.llmo` exists

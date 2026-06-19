@@ -124,9 +124,9 @@ function App() {
       <header className="app-header">
         <div>
           <p className="eyebrow">LLMO coverage</p>
-          <h1>Offsite Opportunities Dashboard</h1>
+          <h1>Offsite Opportunities Viewer</h1>
           <p className="header-copy">
-            Coverage across Reddit, YouTube, Cited, and Wikipedia opportunities for LLMO sites.
+            Visible offsite opportunities across paid and trial LLMO sites.
           </p>
         </div>
         <div className="header-status">
@@ -176,7 +176,7 @@ function App() {
             <div className="metric" key={sourceKey}>
               <span>{OPPORTUNITY_SOURCES[sourceKey].label}</span>
               <strong>{overviewCounts[sourceKey] ?? 0}</strong>
-              <small>shown sites with yes</small>
+              <small>sites shown with yes</small>
             </div>
           ),
         )}
