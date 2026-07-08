@@ -60,7 +60,10 @@ export function CustomerTable({ title, rows, defaultOpen = true }: CustomerTable
                     </td>
                     {sourceKeys.map((sourceKey) => (
                       <td key={sourceKey}>
-                        <StatusPill status={row.indicators[sourceKey]} />
+                        <StatusPill
+                          status={row.indicators[sourceKey]}
+                          date={row.opportunityDates[sourceKey]}
+                        />
                       </td>
                     ))}
                     <td>

@@ -337,6 +337,19 @@ tbody tr:hover td {
   white-space: nowrap;
 }
 
+.status-cell {
+  display: inline-grid;
+  gap: 3px;
+  justify-items: start;
+}
+
+.status-cell__date {
+  color: #667063;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;

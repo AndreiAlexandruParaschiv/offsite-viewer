@@ -53,6 +53,7 @@ export interface SpacecatOpportunity {
   type: string;
   status: string;
   title?: string;
+  createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
 }
@@ -74,6 +75,7 @@ export interface SiteOpportunityRow {
   entitlementTier: string;
   indicators: Record<SourceKey, OpportunityIndicator>;
   opportunityIds: Record<SourceKey, string>;
+  opportunityDates: Record<SourceKey, string>;
   loadError?: string;
 }
 

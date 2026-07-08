@@ -35,15 +35,31 @@ export const isInternalTestPaidCustomer = (row: SiteOpportunityRow) =>
   INTERNAL_TEST_PAID_CUSTOMERS.has(normalizeCustomerIdentity(row.siteName)) ||
   INTERNAL_TEST_PAID_CUSTOMERS.has(normalizeCustomerIdentity(row.baseURL));
 
+export const resolveOpportunityDate = (opportunities: SpacecatOpportunity[]): string => {
+  if (opportunities.length === 0) {
+    return '';
+  }
+
+  if (opportunities.length === 1) {
+    const [only] = opportunities;
+    return only.createdAt ?? only.updatedAt ?? '';
+  }
+
+  return opportunities.reduce((latest, opportunity) => {
+    const timestamp = opportunity.updatedAt ?? opportunity.createdAt ?? '';
+    return timestamp > latest ? timestamp : latest;
+  }, '');
+};
+
 export const indicatorFromOpportunities = (
   opportunities: SpacecatOpportunity[],
   opportunityType: string,
-): { indicator: OpportunityIndicator; opportunityId: string } => {
+): { indicator: OpportunityIndicator; opportunityId: string; date: string } => {
   const matching = opportunities.filter((opportunity) => opportunity.type === opportunityType);
   const visible = matching.find((opportunity) => normalizeOpportunityStatus(opportunity.status) === 'NEW');
 
   if (visible) {
-    return { indicator: 'visible', opportunityId: visible.id };
+    return { indicator: 'visible', opportunityId: visible.id, date: resolveOpportunityDate(matching) };
   }
 
   const ignored = matching.find(
@@ -51,10 +67,10 @@ export const indicatorFromOpportunities = (
   );
 
   if (ignored) {
-    return { indicator: 'ignored', opportunityId: ignored.id };
+    return { indicator: 'ignored', opportunityId: ignored.id, date: resolveOpportunityDate(matching) };
   }
 
-  return { indicator: 'missing', opportunityId: '' };
+  return { indicator: 'missing', opportunityId: '', date: '' };
 };
 
 export const findLlmoEntitlement = (entitlements: SpacecatEntitlement[]) => {
@@ -102,11 +118,13 @@ export const buildSiteRow = ({
   const entitlementTier = llmoEntitlement?.tier ?? 'none';
   const indicators = {} as Record<SourceKey, OpportunityIndicator>;
   const opportunityIds = {} as Record<SourceKey, string>;
+  const opportunityDates = {} as Record<SourceKey, string>;
 
   sourceEntries.forEach(([sourceKey, source]) => {
     const result = indicatorFromOpportunities(opportunities, source.opportunityType);
     indicators[sourceKey] = result.indicator;
     opportunityIds[sourceKey] = result.opportunityId;
+    opportunityDates[sourceKey] = result.date;
   });
 
   return {
@@ -118,6 +136,7 @@ export const buildSiteRow = ({
     entitlementTier,
     indicators,
     opportunityIds,
+    opportunityDates,
     loadError,
   };
 };
@@ -155,9 +174,13 @@ export const toCsv = (dataset: DashboardDataset) => {
     'Customer group',
     'Entitlement tier',
     'Reddit',
+    'Reddit date',
     'YouTube',
+    'YouTube date',
     'Cited',
+    'Cited date',
     'Wikipedia',
+    'Wikipedia date',
     'Reddit opportunity ID',
     'YouTube opportunity ID',
     'Cited opportunity ID',
@@ -174,9 +197,13 @@ export const toCsv = (dataset: DashboardDataset) => {
     row.customerGroup,
     row.entitlementTier,
     row.indicators.reddit,
+    row.opportunityDates.reddit,
     row.indicators.youtube,
+    row.opportunityDates.youtube,
     row.indicators.cited,
+    row.opportunityDates.cited,
     row.indicators.wikipedia,
+    row.opportunityDates.wikipedia,
     row.opportunityIds.reddit,
     row.opportunityIds.youtube,
     row.opportunityIds.cited,

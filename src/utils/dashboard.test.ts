@@ -18,11 +18,17 @@ const site = {
   config: { llmo: { dataFolder: 'example' } },
 };
 
-const opportunity = (type: string, status: string, id = `${type}-${status}`): SpacecatOpportunity => ({
+const opportunity = (
+  type: string,
+  status: string,
+  id = `${type}-${status}`,
+  dates: { createdAt?: string; updatedAt?: string } = {},
+): SpacecatOpportunity => ({
   id,
   siteId: 'site-1',
   type,
   status,
+  ...dates,
 });
 
 describe('dashboard transforms', () => {
@@ -34,16 +40,45 @@ describe('dashboard transforms', () => {
   it('prefers visible new opportunities over ignored opportunities', () => {
     expect(
       indicatorFromOpportunities(
-        [opportunity('reddit-analysis', 'IGNORED'), opportunity('reddit-analysis', 'NEW')],
+        [
+          opportunity('reddit-analysis', 'IGNORED', 'reddit-old', {
+            updatedAt: '2026-05-01T00:00:00.000Z',
+          }),
+          opportunity('reddit-analysis', 'NEW', 'reddit-new', {
+            updatedAt: '2026-06-10T00:00:00.000Z',
+          }),
+        ],
         'reddit-analysis',
       ),
-    ).toEqual({ indicator: 'visible', opportunityId: 'reddit-analysis-NEW' });
+    ).toEqual({
+      indicator: 'visible',
+      opportunityId: 'reddit-new',
+      date: '2026-06-10T00:00:00.000Z',
+    });
   });
 
   it('shows ignored only when no visible opportunity exists', () => {
     expect(
       indicatorFromOpportunities([opportunity('youtube-analysis', 'IGNORED')], 'youtube-analysis'),
-    ).toEqual({ indicator: 'ignored', opportunityId: 'youtube-analysis-IGNORED' });
+    ).toEqual({ indicator: 'ignored', opportunityId: 'youtube-analysis-IGNORED', date: '' });
+  });
+
+  it('uses the creation date when a source has a single opportunity', () => {
+    expect(
+      indicatorFromOpportunities(
+        [
+          opportunity('cited-analysis', 'NEW', 'cited-only', {
+            createdAt: '2026-06-01T00:00:00.000Z',
+            updatedAt: '2026-06-20T00:00:00.000Z',
+          }),
+        ],
+        'cited-analysis',
+      ),
+    ).toEqual({
+      indicator: 'visible',
+      opportunityId: 'cited-only',
+      date: '2026-06-01T00:00:00.000Z',
+    });
   });
 
   it('maps entitlement tiers into customer groups', () => {
