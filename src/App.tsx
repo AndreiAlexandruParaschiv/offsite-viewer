@@ -80,7 +80,10 @@ function App() {
       setProgress(`Loading opportunities for ${llmoSites.length} LLMO sites`);
 
       const rows = await mapWithConcurrency(llmoSites, 8, async (site, index) => {
-        setProgress(`Loading site ${index + 1} of ${llmoSites.length}: ${site.baseURL}`);
+        const percent = Math.round(((index + 1) / llmoSites.length) * 100);
+        setProgress(
+          `Loading site ${index + 1} of ${llmoSites.length} (${percent}%): ${site.baseURL}`,
+        );
 
         let entitlements = entitlementsByOrg.get(site.organizationId);
         if (!entitlements) {
