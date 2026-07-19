@@ -55,10 +55,8 @@ const initIms = (): Promise<AdobeIms> => {
   const environment = import.meta.env.VITE_IMS_ENVIRONMENT === 'stage' ? 'stage' : 'prod';
 
   if (!clientId) {
-    // Not cached: a missing client ID is a config problem, not a transient
-    // failure, but callers should still be able to retry after fixing .env
-    // and reloading rather than getting stuck on a memoized rejection.
-    return Promise.reject(new Error('VITE_IMS_CLIENT_ID is not configured'));
+    readyPromise = Promise.reject(new Error('VITE_IMS_CLIENT_ID is not configured'));
+    return readyPromise;
   }
 
   readyPromise = new Promise<AdobeIms>((resolve, reject) => {
@@ -71,13 +69,9 @@ const initIms = (): Promise<AdobeIms> => {
 
         window.adobeImsFactory.createIMSLib({
           client_id: clientId,
-          // Must match exactly the scopes granted to this client in Adobe
-          // Developer Console (AEM CS Sites Content Management API product).
-          scope: 'aem.folders,AdobeID,aem.fragments.management,openid',
+          scope: 'openid,AdobeID',
           environment: environment === 'stage' ? 'stg1' : 'prod',
-          // Trailing slash to match the redirect URI(s) registered in Adobe
-          // Developer Console (window.location.origin never has one).
-          redirect_uri: `${window.location.origin}/`,
+          redirect_uri: window.location.origin,
           useLocalStorage: false,
           onReady: () => resolve(window.adobeIMS as AdobeIms),
           onError: (error: unknown) =>
@@ -86,12 +80,6 @@ const initIms = (): Promise<AdobeIms> => {
         window.adobeIMS?.initialize();
       })
       .catch(reject);
-  });
-
-  // On failure, forget the cached promise so the next call (e.g. clicking
-  // "Sign in" again) retries instead of replaying the same rejection forever.
-  readyPromise.catch(() => {
-    readyPromise = null;
   });
 
   return readyPromise;

@@ -50,7 +50,6 @@ function App() {
     () => sessionStorage.getItem(BASE_URL_STORAGE_KEY) ?? API_DEFAULT_BASE_URL,
   );
   const [imsStatus, setImsStatus] = useState<ImsStatus>('checking');
-  const [imsError, setImsError] = useState('');
   const [status, setStatus] = useState<FetchStatus>('idle');
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
@@ -59,17 +58,11 @@ function App() {
   useEffect(() => {
     isImsSignedIn()
       .then((signedIn) => setImsStatus(signedIn ? 'signed-in' : 'signed-out'))
-      .catch((imsInitError: unknown) => {
-        setImsStatus('error');
-        setImsError(imsInitError instanceof Error ? imsInitError.message : 'Adobe sign-in failed');
-      });
+      .catch(() => setImsStatus('error'));
   }, []);
 
   const handleSignIn = () => {
-    signInWithIms().catch((signInError: unknown) => {
-      setImsStatus('error');
-      setImsError(signInError instanceof Error ? signInError.message : 'Adobe sign-in failed');
-    });
+    signInWithIms().catch(() => setImsStatus('error'));
   };
 
   const groupedRows = useMemo(() => groupRows(dataset.rows), [dataset.rows]);
@@ -172,7 +165,7 @@ function App() {
         <div className="ims-status">
           {imsStatus === 'checking' ? <span>Checking Adobe sign-in&hellip;</span> : null}
           {imsStatus === 'signed-in' ? <span>Signed in with Adobe</span> : null}
-          {imsStatus === 'error' ? <strong>{imsError || 'Adobe sign-in failed'}</strong> : null}
+          {imsStatus === 'error' ? <strong>Adobe sign-in failed</strong> : null}
           {imsStatus === 'signed-out' || imsStatus === 'error' ? (
             <button type="button" className="secondary" onClick={handleSignIn}>
               <LogIn size={16} />
