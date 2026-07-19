@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env` and set `VITE_IMS_CLIENT_ID` to a public IMS **Single Page App** credential registered in Adobe Developer Console, with this app's origin(s) (`https://localhost:5173` for dev — must be HTTPS, hence the `@vitejs/plugin-basic-ssl` dev dependency — plus any deployed URL) as allowed redirect URIs, and a `scope` matching `SCOPE` in `src/auth/ims.ts`. No client secret is needed or used — this is a browser-only app.
+Copy `.env.example` to `.env` and set `VITE_IMS_CLIENT_ID` to a public IMS SPA client ID registered in Adobe Developer Console, with this app's origin(s) (`http://localhost:5173` for dev, plus any deployed URL) as allowed redirect URIs. No client secret is needed or used — this is a browser-only app.
 
 The app defaults to the production LLMO API base URL:
 
@@ -19,13 +19,13 @@ https://llmo.experiencecloud.live/api/v1
 
 ## Sign-in
 
-Click "Sign in with Adobe" — this redirects to Adobe IMS's login (an OAuth 2.0 Authorization Code + PKCE flow) and back. The resulting IMS access token is exchanged for a Spacecat session token via `POST {baseUrl}/auth/login`, then used as:
+Click "Sign in with Adobe" (or the app silently detects an existing Adobe SSO session). The resulting IMS access token is exchanged for a Spacecat session token via `POST {baseUrl}/auth/login`, then used as:
 
 ```text
 Authorization: Bearer <sessionToken>
 ```
 
-Data access is governed by your own Adobe account's Spacecat/LLMO entitlements (e.g. `is_admin` / `is_llmo_administrator`) — same as the previous manual-token flow, just without copy-pasting the token yourself. Nothing is persisted beyond the current browser session/tab (the IMS access token is kept in `sessionStorage` until it expires).
+Data access is governed by your own Adobe account's Spacecat/LLMO entitlements (e.g. `is_admin` / `is_llmo_administrator`) — same as the previous manual-token flow, just without copy-pasting the token yourself. Nothing is persisted beyond the current browser session/tab.
 
 ## Data flow
 
