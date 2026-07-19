@@ -16,6 +16,7 @@ import {
   buildSiteRow,
   customerGroupFromTier,
   findLlmoEntitlement,
+  formatIsoWeek,
   getOverviewCounts,
   groupRows,
   isLlmoSite,
@@ -50,13 +51,13 @@ const formatTimestamp = (value?: string) => {
   }).format(new Date(value));
 };
 
-const downloadCsv = (dataset: DashboardDataset) => {
+const downloadCsv = (dataset: DashboardDataset, filenamePrefix: string) => {
   const csv = toCsv(dataset);
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `offsite-opportunities-${dataset.generatedAt.slice(0, 10)}.csv`;
+  link.download = `${filenamePrefix}.csv`;
   link.click();
   URL.revokeObjectURL(url);
 };
@@ -79,6 +80,10 @@ function App() {
   const visibleDataset = useMemo(
     () => ({ rows: visibleRows, generatedAt: dataset.generatedAt }),
     [dataset.generatedAt, visibleRows],
+  );
+  const paidDataset = useMemo(
+    () => ({ rows: groupedRows.paid, generatedAt: dataset.generatedAt }),
+    [dataset.generatedAt, groupedRows.paid],
   );
   const overviewCounts = useMemo(() => getOverviewCounts(visibleRows), [visibleRows]);
 
@@ -210,7 +215,7 @@ function App() {
           <button
             type="button"
             className="secondary"
-            onClick={() => downloadCsv(visibleDataset)}
+            onClick={() => downloadCsv(visibleDataset, `offsite-opportunities-${dataset.generatedAt.slice(0, 10)}`)}
             disabled={!canExport}
           >
             <Download size={16} />
@@ -238,7 +243,14 @@ function App() {
         {error ? <strong>{error}</strong> : null}
       </section>
 
-      <CustomerTable title="Paid customers" rows={groupedRows.paid} defaultOpen />
+      <CustomerTable
+        title="Paid customers"
+        rows={groupedRows.paid}
+        defaultOpen
+        onExport={() =>
+          downloadCsv(paidDataset, `offsite-opportunities-paid-${formatIsoWeek(dataset.generatedAt)}`)
+        }
+      />
       <CustomerTable title="Trial customers" rows={groupedRows.trial} defaultOpen />
     </main>
   );

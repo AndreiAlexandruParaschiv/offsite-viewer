@@ -23,6 +23,9 @@ const INTERNAL_TEST_PAID_CUSTOMERS = new Set([
   'buzios-vibe.com',
   'https://buzios-vibe.com',
   'http://buzios-vibe.com',
+  'https://main--cloudfront-setup--ssilare-adobe.aem.page',
+  'https://main--frescopa-dba--ktzmishra.aem.live',
+  'https://frescopa.aem-screens.net',
 ]);
 
 export const isLlmoSite = (site: SpacecatSite) => Boolean(site.config?.llmo);
@@ -165,6 +168,26 @@ const csvEscape = (value: string | number) => {
   return raw;
 };
 
+// ISO 8601 week: weeks start Monday, week 1 contains the year's first Thursday.
+export const formatIsoWeek = (dateIso: string): string => {
+  const date = new Date(dateIso);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNumber = (target.getUTCDay() + 6) % 7;
+  target.setUTCDate(target.getUTCDate() - dayNumber + 3);
+
+  const firstThursday = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
+  const firstDayNumber = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNumber + 3);
+
+  const week = 1 + Math.round((target.getTime() - firstThursday.getTime()) / (7 * 24 * 60 * 60 * 1000));
+
+  return `${target.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+};
+
 export const toCsv = (dataset: DashboardDataset) => {
   const headers = [
     'Site name',
@@ -187,7 +210,10 @@ export const toCsv = (dataset: DashboardDataset) => {
     'Wikipedia opportunity ID',
     'Load error',
     'Generated at',
+    'Week of year',
   ];
+
+  const weekOfYear = formatIsoWeek(dataset.generatedAt);
 
   const rows = dataset.rows.map((row) => [
     row.siteName,
@@ -210,6 +236,7 @@ export const toCsv = (dataset: DashboardDataset) => {
     row.opportunityIds.wikipedia,
     row.loadError ?? '',
     dataset.generatedAt,
+    weekOfYear,
   ]);
 
   return [headers, ...rows].map((row) => row.map(csvEscape).join(',')).join('\n');

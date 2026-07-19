@@ -1,4 +1,4 @@
-import { ChevronDown, ExternalLink } from 'lucide-react';
+import { ChevronDown, Download, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import { OPPORTUNITY_SOURCES, type SiteOpportunityRow } from '../types';
 import { StatusPill } from './StatusPill';
@@ -7,25 +7,39 @@ interface CustomerTableProps {
   title: string;
   rows: SiteOpportunityRow[];
   defaultOpen?: boolean;
+  onExport?: () => void;
 }
 
 const sourceKeys = Object.keys(OPPORTUNITY_SOURCES) as Array<keyof typeof OPPORTUNITY_SOURCES>;
 
-export function CustomerTable({ title, rows, defaultOpen = true }: CustomerTableProps) {
+export function CustomerTable({ title, rows, defaultOpen = true, onExport }: CustomerTableProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
     <section className="customer-section">
-      <button
-        type="button"
-        className="customer-section__toggle"
-        onClick={() => setIsOpen((current) => !current)}
-        aria-expanded={isOpen}
-      >
-        <ChevronDown className={isOpen ? 'chevron chevron--open' : 'chevron'} size={18} />
-        <span>{title}</span>
-        <strong>{rows.length}</strong>
-      </button>
+      <div className="customer-section__header">
+        <button
+          type="button"
+          className="customer-section__toggle"
+          onClick={() => setIsOpen((current) => !current)}
+          aria-expanded={isOpen}
+        >
+          <ChevronDown className={isOpen ? 'chevron chevron--open' : 'chevron'} size={18} />
+          <span>{title}</span>
+          <strong>{rows.length}</strong>
+        </button>
+        {onExport ? (
+          <button
+            type="button"
+            className="customer-section__export"
+            onClick={onExport}
+            disabled={rows.length === 0}
+          >
+            <Download size={14} />
+            Export CSV
+          </button>
+        ) : null}
+      </div>
 
       {isOpen ? (
         <div className="table-shell">

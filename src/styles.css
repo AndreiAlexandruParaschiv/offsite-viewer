@@ -225,11 +225,18 @@ input:focus {
   border-top: 1px solid #d9ded4;
 }
 
-.customer-section__toggle {
+.customer-section__header {
   display: flex;
   align-items: center;
+  gap: 12px;
+  min-height: 50px;
+}
+
+.customer-section__toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
   gap: 10px;
-  width: 100%;
   min-height: 50px;
   padding: 0;
   color: #17201a;
@@ -237,6 +244,26 @@ input:focus {
   border: 0;
   font-weight: 850;
   text-align: left;
+}
+
+.customer-section__export {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  color: #1d2a20;
+  background: #ffffff;
+  border: 1px solid #c8d0c4;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.customer-section__export:disabled {
+  opacity: 0.54;
+  cursor: not-allowed;
 }
 
 .customer-section__toggle span {
