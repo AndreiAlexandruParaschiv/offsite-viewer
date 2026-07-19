@@ -14,7 +14,7 @@ const sourceEntries = Object.entries(OPPORTUNITY_SOURCES) as Array<
   [SourceKey, (typeof OPPORTUNITY_SOURCES)[SourceKey]]
 >;
 
-const LLMO_PRODUCT_HINTS = ['llmo', 'LLMO', 'ai-visibility', 'AI_VISIBILITY'];
+const LLMO_PRODUCT_HINTS = ['llmo', 'LLMO', 'ai-visibility', 'AI_VISIBILITY', 'llm_optimizer', 'LLM_OPTIMIZER'];
 const INTERNAL_TEST_PAID_CUSTOMERS = new Set([
   'llmo release notes',
   'https://test-tokowaka.testaemcloud.com',
