@@ -33,6 +33,12 @@ const CUSTOMER_GROUP_LOAD_PRIORITY: Record<CustomerGroup, number> = {
   free: 2,
 };
 
+// Entitlement lookups are one lightweight call per org (fewer orgs than
+// sites), so a higher concurrency is safe. Opportunity lookups return more
+// data per site; keep that pool smaller to avoid tripping API rate limits.
+const ENTITLEMENT_FETCH_CONCURRENCY = 20;
+const OPPORTUNITY_FETCH_CONCURRENCY = 12;
+
 const formatTimestamp = (value?: string) => {
   if (!value) {
     return 'Not loaded';
@@ -92,7 +98,7 @@ function App() {
 
       setProgress(`Loading entitlements for ${organizationIds.length} organizations`);
 
-      await mapWithConcurrency(organizationIds, 8, async (organizationId) => {
+      await mapWithConcurrency(organizationIds, ENTITLEMENT_FETCH_CONCURRENCY, async (organizationId) => {
         try {
           entitlementsByOrg.set(organizationId, await client.getEntitlements(organizationId));
         } catch {
@@ -125,7 +131,7 @@ function App() {
         setDataset({ rows: sortedRows, generatedAt: new Date().toISOString() });
       };
 
-      await mapWithConcurrency(orderedSites, 8, async (site, index) => {
+      await mapWithConcurrency(orderedSites, OPPORTUNITY_FETCH_CONCURRENCY, async (site, index) => {
         const percent = Math.round(((index + 1) / orderedSites.length) * 100);
         setProgress(
           `Loading site ${index + 1} of ${orderedSites.length} (${percent}%): ${site.baseURL}`,
