@@ -86,6 +86,11 @@ function App() {
     [dataset.generatedAt, groupedRows.paid],
   );
   const overviewCounts = useMemo(() => getOverviewCounts(visibleRows), [visibleRows]);
+  const paidOverviewCounts = useMemo(() => getOverviewCounts(groupedRows.paid), [groupedRows.paid]);
+  const trialOverviewCounts = useMemo(
+    () => getOverviewCounts(groupedRows.trial),
+    [groupedRows.trial],
+  );
 
   const loadDashboard = async () => {
     setStatus('loading');
@@ -231,6 +236,9 @@ function App() {
               <span>{OPPORTUNITY_SOURCES[sourceKey].label}</span>
               <strong>{overviewCounts[sourceKey] ?? 0}</strong>
               <small>sites shown with yes</small>
+              <small className="metric__breakdown">
+                Paid {paidOverviewCounts[sourceKey] ?? 0} &middot; Trial {trialOverviewCounts[sourceKey] ?? 0}
+              </small>
             </div>
           ),
         )}

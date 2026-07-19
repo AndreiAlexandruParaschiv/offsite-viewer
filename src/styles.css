@@ -179,6 +179,12 @@ input:focus {
   font-size: 0.78rem;
 }
 
+.metric__breakdown {
+  color: #415048;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 .load-state {
   display: flex;
   align-items: center;
