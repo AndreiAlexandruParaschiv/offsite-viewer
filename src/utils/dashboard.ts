@@ -43,6 +43,7 @@ const INTERNAL_TEST_CUSTOMERS = new Set([
   'http://169-254-169-254.nip.io/latest/meta-data',
   'https://abcxyztest.com',
   'https://agldstqtrtest.digital.agl.com.au',
+  'https://t3xvtcra96mvq6dyrq06oyqw2n8ew7kw.oastify.com/path/working/test',
 ]);
 
 export const isLlmoSite = (site: SpacecatSite) => Boolean(site.config?.llmo);
