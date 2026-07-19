@@ -26,6 +26,8 @@ const INTERNAL_TEST_PAID_CUSTOMERS = new Set([
   'https://main--cloudfront-setup--ssilare-adobe.aem.page',
   'https://main--frescopa-dba--ktzmishra.aem.live',
   'https://frescopa.aem-screens.net',
+  'https://ravitest.com',
+  'https://testingmypoc.com',
 ]);
 
 export const isLlmoSite = (site: SpacecatSite) => Boolean(site.config?.llmo);
