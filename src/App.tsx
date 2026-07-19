@@ -1,6 +1,7 @@
-import { Download, RefreshCw, ShieldCheck } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { SpacecatClient } from './api/spacecat';
+import { Download, LogIn, RefreshCw, ShieldCheck } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { exchangeImsAccessToken, SpacecatClient } from './api/spacecat';
+import { getImsAccessToken, isImsSignedIn, signInWithIms } from './auth/ims';
 import { CustomerTable } from './components/CustomerTable';
 import {
   API_DEFAULT_BASE_URL,
@@ -18,8 +19,9 @@ import {
   toCsv,
 } from './utils/dashboard';
 
-const TOKEN_STORAGE_KEY = 'offsite-viewer.token';
 const BASE_URL_STORAGE_KEY = 'offsite-viewer.baseUrl';
+
+type ImsStatus = 'checking' | 'signed-out' | 'signed-in' | 'error';
 
 const formatTimestamp = (value?: string) => {
   if (!value) {
@@ -47,11 +49,21 @@ function App() {
   const [baseUrl, setBaseUrl] = useState(
     () => sessionStorage.getItem(BASE_URL_STORAGE_KEY) ?? API_DEFAULT_BASE_URL,
   );
-  const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? '');
+  const [imsStatus, setImsStatus] = useState<ImsStatus>('checking');
   const [status, setStatus] = useState<FetchStatus>('idle');
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
   const [dataset, setDataset] = useState<DashboardDataset>({ rows: [], generatedAt: '' });
+
+  useEffect(() => {
+    isImsSignedIn()
+      .then((signedIn) => setImsStatus(signedIn ? 'signed-in' : 'signed-out'))
+      .catch(() => setImsStatus('error'));
+  }, []);
+
+  const handleSignIn = () => {
+    signInWithIms().catch(() => setImsStatus('error'));
+  };
 
   const groupedRows = useMemo(() => groupRows(dataset.rows), [dataset.rows]);
   const visibleRows = useMemo(
@@ -67,12 +79,15 @@ function App() {
   const loadDashboard = async () => {
     setStatus('loading');
     setError('');
-    setProgress('Loading sites');
+    setProgress('Signing in with Adobe');
     sessionStorage.setItem(BASE_URL_STORAGE_KEY, baseUrl);
-    sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
 
     try {
-      const client = new SpacecatClient({ baseUrl, token });
+      const imsAccessToken = await getImsAccessToken();
+      const sessionToken = await exchangeImsAccessToken(baseUrl, imsAccessToken);
+
+      setProgress('Loading sites');
+      const client = new SpacecatClient({ baseUrl, token: sessionToken });
       const allSites = await client.getAllSites();
       const llmoSites = allSites.filter(isLlmoSite);
       const entitlementsByOrg = new Map<string, SpacecatEntitlement[]>();
@@ -119,7 +134,7 @@ function App() {
     }
   };
 
-  const canLoad = status !== 'loading' && token.trim().length > 0 && baseUrl.trim().length > 0;
+  const canLoad = status !== 'loading' && imsStatus === 'signed-in' && baseUrl.trim().length > 0;
   const canExport = visibleRows.length > 0;
 
   return (
@@ -147,15 +162,17 @@ function App() {
             placeholder={API_DEFAULT_BASE_URL}
           />
         </label>
-        <label>
-          IMS or session token
-          <input
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            type="password"
-            placeholder="Bearer token"
-          />
-        </label>
+        <div className="ims-status">
+          {imsStatus === 'checking' ? <span>Checking Adobe sign-in&hellip;</span> : null}
+          {imsStatus === 'signed-in' ? <span>Signed in with Adobe</span> : null}
+          {imsStatus === 'error' ? <strong>Adobe sign-in failed</strong> : null}
+          {imsStatus === 'signed-out' || imsStatus === 'error' ? (
+            <button type="button" className="secondary" onClick={handleSignIn}>
+              <LogIn size={16} />
+              Sign in with Adobe
+            </button>
+          ) : null}
+        </div>
         <div className="actions">
           <button type="button" onClick={loadDashboard} disabled={!canLoad}>
             <RefreshCw size={16} className={status === 'loading' ? 'spin' : ''} />

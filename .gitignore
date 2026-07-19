@@ -5,3 +5,5 @@ output/
 *.log
 node_modules/.tmp/
 .tokensave
+.env
+.env.local

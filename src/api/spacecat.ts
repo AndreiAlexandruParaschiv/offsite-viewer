@@ -29,6 +29,25 @@ const readErrorBody = async (response: Response) => {
   }
 };
 
+export const exchangeImsAccessToken = async (baseUrl: string, imsAccessToken: string): Promise<string> => {
+  const response = await fetch(`${normalizeBaseUrl(baseUrl)}/auth/login`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ accessToken: imsAccessToken }),
+  });
+
+  if (!response.ok) {
+    const message = await readErrorBody(response);
+    throw new Error(`${response.status} ${message}`);
+  }
+
+  const { sessionToken } = (await response.json()) as { sessionToken: string };
+  return sessionToken;
+};
+
 export class SpacecatClient {
   private readonly baseUrl: string;
 
