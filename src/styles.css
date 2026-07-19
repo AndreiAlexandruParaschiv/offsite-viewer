@@ -301,8 +301,14 @@ input:focus {
 
 .table-shell {
   width: 100%;
+  max-height: 70vh;
   margin-bottom: 18px;
-  overflow-x: auto;
+  /* Per the CSS overflow spec, overflow-x: auto forces overflow-y's computed
+     value to auto too, no matter what overflow-y is explicitly set to — so
+     position: sticky on th can never bind to the page scroll here. Give this
+     box a real bounded height instead, so it becomes its own scroll
+     container that the sticky header correctly pins within. */
+  overflow: auto;
   background: #ffffff;
   border: 1px solid #d9ded4;
   border-radius: 6px;
@@ -326,12 +332,33 @@ th {
   position: sticky;
   top: 0;
   z-index: 1;
+  padding: 0;
   color: #546052;
   background: #fbfcf9;
   font-size: 0.73rem;
   font-weight: 850;
   text-transform: uppercase;
   letter-spacing: 0;
+}
+
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 14px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.th-sort:hover {
+  color: #17201a;
 }
 
 tbody tr:last-child td {
