@@ -16,7 +16,7 @@ const formatDate = (value: string) => {
 };
 
 export function StatusPill({ status, date }: { status: OpportunityIndicator; date?: string }) {
-  const formattedDate = status === 'visible' && date ? formatDate(date) : '';
+  const formattedDate = (status === 'visible' || status === 'ignored') && date ? formatDate(date) : '';
 
   return (
     <span className="status-cell">
