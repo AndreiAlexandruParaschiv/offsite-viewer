@@ -9,23 +9,17 @@ npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env` and set `VITE_IMS_CLIENT_ID` to a public IMS SPA client ID registered in Adobe Developer Console, with this app's origin(s) (`http://localhost:5173` for dev, plus any deployed URL) as allowed redirect URIs. No client secret is needed or used — this is a browser-only app.
-
 The app defaults to the production LLMO API base URL:
 
 ```text
 https://llmo.experiencecloud.live/api/v1
 ```
 
-## Sign-in
-
-Click "Sign in with Adobe" (or the app silently detects an existing Adobe SSO session). The resulting IMS access token is exchanged for a Spacecat session token via `POST {baseUrl}/auth/login`, then used as:
+Paste an IMS bearer token or Spacecat session token into the viewer before loading data. The token is stored in `sessionStorage` only and sent as:
 
 ```text
-Authorization: Bearer <sessionToken>
+Authorization: Bearer <token>
 ```
-
-Data access is governed by your own Adobe account's Spacecat/LLMO entitlements (e.g. `is_admin` / `is_llmo_administrator`) — same as the previous manual-token flow, just without copy-pasting the token yourself. Nothing is persisted beyond the current browser session/tab.
 
 ## Data flow
 
