@@ -5,13 +5,17 @@ import { CustomerTable } from './components/CustomerTable';
 import {
   API_DEFAULT_BASE_URL,
   OPPORTUNITY_SOURCES,
+  type CustomerGroup,
   type DashboardDataset,
   type FetchStatus,
+  type SiteOpportunityRow,
   type SpacecatEntitlement,
 } from './types';
 import { mapWithConcurrency } from './utils/concurrency';
 import {
   buildSiteRow,
+  customerGroupFromTier,
+  findLlmoEntitlement,
   getOverviewCounts,
   groupRows,
   isLlmoSite,
@@ -20,6 +24,14 @@ import {
 
 const TOKEN_STORAGE_KEY = 'offsite-viewer.token';
 const BASE_URL_STORAGE_KEY = 'offsite-viewer.baseUrl';
+
+// Paid sites load first so the Paid customers table fills in before trial/free
+// sites (which can outnumber paid ones considerably) finish loading.
+const CUSTOMER_GROUP_LOAD_PRIORITY: Record<CustomerGroup, number> = {
+  paid: 0,
+  trial: 1,
+  free: 2,
+};
 
 const formatTimestamp = (value?: string) => {
   if (!value) {
@@ -75,43 +87,71 @@ function App() {
       const client = new SpacecatClient({ baseUrl, token });
       const allSites = await client.getAllSites();
       const llmoSites = allSites.filter(isLlmoSite);
+      const organizationIds = [...new Set(llmoSites.map((site) => site.organizationId))];
       const entitlementsByOrg = new Map<string, SpacecatEntitlement[]>();
 
-      setProgress(`Loading opportunities for ${llmoSites.length} LLMO sites`);
+      setProgress(`Loading entitlements for ${organizationIds.length} organizations`);
 
-      const rows = await mapWithConcurrency(llmoSites, 8, async (site, index) => {
-        const percent = Math.round(((index + 1) / llmoSites.length) * 100);
+      await mapWithConcurrency(organizationIds, 8, async (organizationId) => {
+        try {
+          entitlementsByOrg.set(organizationId, await client.getEntitlements(organizationId));
+        } catch {
+          entitlementsByOrg.set(organizationId, []);
+        }
+      });
+
+      const customerGroupBySite = new Map(
+        llmoSites.map((site) => [
+          site.id,
+          customerGroupFromTier(
+            findLlmoEntitlement(entitlementsByOrg.get(site.organizationId) ?? [])?.tier,
+          ),
+        ]),
+      );
+
+      const orderedSites = [...llmoSites].sort(
+        (a, b) =>
+          CUSTOMER_GROUP_LOAD_PRIORITY[customerGroupBySite.get(a.id) ?? 'free'] -
+          CUSTOMER_GROUP_LOAD_PRIORITY[customerGroupBySite.get(b.id) ?? 'free'],
+      );
+
+      setProgress(`Loading opportunities for ${orderedSites.length} LLMO sites`);
+
+      const rowsById = new Map<string, SiteOpportunityRow>();
+      const publishDataset = () => {
+        const sortedRows = [...rowsById.values()].sort((a, b) =>
+          a.siteName.localeCompare(b.siteName),
+        );
+        setDataset({ rows: sortedRows, generatedAt: new Date().toISOString() });
+      };
+
+      await mapWithConcurrency(orderedSites, 8, async (site, index) => {
+        const percent = Math.round(((index + 1) / orderedSites.length) * 100);
         setProgress(
-          `Loading site ${index + 1} of ${llmoSites.length} (${percent}%): ${site.baseURL}`,
+          `Loading site ${index + 1} of ${orderedSites.length} (${percent}%): ${site.baseURL}`,
         );
 
-        let entitlements = entitlementsByOrg.get(site.organizationId);
-        if (!entitlements) {
-          try {
-            entitlements = await client.getEntitlements(site.organizationId);
-          } catch {
-            entitlements = [];
-          }
-          entitlementsByOrg.set(site.organizationId, entitlements);
-        }
+        const entitlements = entitlementsByOrg.get(site.organizationId) ?? [];
 
+        let row: SiteOpportunityRow;
         try {
           const opportunities = await client.getSiteOpportunities(site.id);
-          return buildSiteRow({ site, opportunities, entitlements });
+          row = buildSiteRow({ site, opportunities, entitlements });
         } catch (siteError) {
-          return buildSiteRow({
+          row = buildSiteRow({
             site,
             opportunities: [],
             entitlements,
             loadError: siteError instanceof Error ? siteError.message : 'Opportunity load failed',
           });
         }
+
+        rowsById.set(row.siteId, row);
+        publishDataset();
       });
 
-      const sortedRows = [...rows].sort((a, b) => a.siteName.localeCompare(b.siteName));
-      setDataset({ rows: sortedRows, generatedAt: new Date().toISOString() });
       setStatus('success');
-      setProgress(`Loaded ${sortedRows.length} LLMO sites`);
+      setProgress(`Loaded ${rowsById.size} LLMO sites`);
     } catch (loadError) {
       setStatus('error');
       setError(loadError instanceof Error ? loadError.message : 'Failed to load dashboard data');
