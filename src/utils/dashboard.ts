@@ -15,7 +15,9 @@ const sourceEntries = Object.entries(OPPORTUNITY_SOURCES) as Array<
 >;
 
 const LLMO_PRODUCT_HINTS = ['llmo', 'LLMO', 'ai-visibility', 'AI_VISIBILITY', 'llm_optimizer', 'LLM_OPTIMIZER'];
-const INTERNAL_TEST_PAID_CUSTOMERS = new Set([
+// Internal/test/dev-preview sites and onboarding-flow probes that shouldn't
+// show up as real customers, in either the paid or trial tables.
+const INTERNAL_TEST_CUSTOMERS = new Set([
   'llmo release notes',
   'https://test-tokowaka.testaemcloud.com',
   'https://optimize-at-edge.testaemcloud.com',
@@ -31,6 +33,16 @@ const INTERNAL_TEST_PAID_CUSTOMERS = new Set([
   'https://author-p180456-e1899464.adobeaemcloud.com',
   'https://frescopa-unibuc.testaemcloud.com',
   'https://llmo-onboardtest10.com',
+  'https://main--fastowl28790--aemsitestrial.aem.page',
+  'https://main--wknd-universal--tuckerelliott.aem.pag',
+  'https://test.net',
+  'https://tester.com',
+  'https://testing.com',
+  'https://testurl.com',
+  'https://testuser.com',
+  'http://169-254-169-254.nip.io/latest/meta-data',
+  'https://abcxyztest.com',
+  'https://agldstqtrtest.digital.agl.com.au',
 ]);
 
 export const isLlmoSite = (site: SpacecatSite) => Boolean(site.config?.llmo);
@@ -39,9 +51,9 @@ export const normalizeOpportunityStatus = (status: string | undefined) => status
 
 const normalizeCustomerIdentity = (value: string) => value.trim().toLowerCase().replace(/\/+$/, '');
 
-export const isInternalTestPaidCustomer = (row: SiteOpportunityRow) =>
-  INTERNAL_TEST_PAID_CUSTOMERS.has(normalizeCustomerIdentity(row.siteName)) ||
-  INTERNAL_TEST_PAID_CUSTOMERS.has(normalizeCustomerIdentity(row.baseURL));
+export const isInternalTestCustomer = (row: SiteOpportunityRow) =>
+  INTERNAL_TEST_CUSTOMERS.has(normalizeCustomerIdentity(row.siteName)) ||
+  INTERNAL_TEST_CUSTOMERS.has(normalizeCustomerIdentity(row.baseURL));
 
 export const resolveOpportunityDate = (opportunities: SpacecatOpportunity[]): string => {
   if (opportunities.length === 0) {
@@ -159,8 +171,8 @@ export const getOverviewCounts = (rows: SiteOpportunityRow[]) =>
   );
 
 export const groupRows = (rows: SiteOpportunityRow[]) => ({
-  paid: rows.filter((row) => row.customerGroup === 'paid' && !isInternalTestPaidCustomer(row)),
-  trial: rows.filter((row) => row.customerGroup === 'trial'),
+  paid: rows.filter((row) => row.customerGroup === 'paid' && !isInternalTestCustomer(row)),
+  trial: rows.filter((row) => row.customerGroup === 'trial' && !isInternalTestCustomer(row)),
   free: rows.filter((row) => row.customerGroup === 'free'),
 });
 
