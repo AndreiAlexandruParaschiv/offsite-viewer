@@ -29,6 +29,7 @@ const INTERNAL_TEST_PAID_CUSTOMERS = new Set([
   'https://ravitest.com',
   'https://testingmypoc.com',
   'https://author-p180456-e1899464.adobeaemcloud.com',
+  'https://frescopa-unibuc.testaemcloud.com',
 ]);
 
 export const isLlmoSite = (site: SpacecatSite) => Boolean(site.config?.llmo);
