@@ -1,5 +1,5 @@
 import { Download, RefreshCw, ShieldCheck } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { SpacecatClient } from './api/spacecat';
 import { CustomerTable } from './components/CustomerTable';
 import {
@@ -10,6 +10,7 @@ import {
   type FetchStatus,
   type SiteOpportunityRow,
   type SpacecatEntitlement,
+  type SpacecatSite,
 } from './types';
 import { mapWithConcurrency } from './utils/concurrency';
 import {
@@ -51,6 +52,24 @@ const formatTimestamp = (value?: string) => {
   }).format(new Date(value));
 };
 
+const fetchRow = async (
+  client: SpacecatClient,
+  site: SpacecatSite,
+  entitlements: SpacecatEntitlement[],
+): Promise<SiteOpportunityRow> => {
+  try {
+    const opportunities = await client.getSiteOpportunities(site.id);
+    return buildSiteRow({ site, opportunities, entitlements });
+  } catch (siteError) {
+    return buildSiteRow({
+      site,
+      opportunities: [],
+      entitlements,
+      loadError: siteError instanceof Error ? siteError.message : 'Opportunity load failed',
+    });
+  }
+};
+
 const downloadCsv = (dataset: DashboardDataset, filenamePrefix: string) => {
   const csv = toCsv(dataset);
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -71,6 +90,16 @@ function App() {
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
   const [dataset, setDataset] = useState<DashboardDataset>({ rows: [], generatedAt: '' });
+  const [hasLoadContext, setHasLoadContext] = useState(false);
+
+  // Snapshot from the last full Load, kept around so "Refresh paid
+  // customers" can re-fetch just paid sites' opportunities without
+  // re-listing sites or re-fetching every org's entitlements.
+  const loadContextRef = useRef<{
+    client: SpacecatClient;
+    sites: SpacecatSite[];
+    entitlementsByOrg: Map<string, SpacecatEntitlement[]>;
+  } | null>(null);
 
   const groupedRows = useMemo(() => groupRows(dataset.rows), [dataset.rows]);
   const visibleRows = useMemo(
@@ -116,6 +145,9 @@ function App() {
         }
       });
 
+      loadContextRef.current = { client, sites: llmoSites, entitlementsByOrg };
+      setHasLoadContext(true);
+
       const customerGroupBySite = new Map(
         llmoSites.map((site) => [
           site.id,
@@ -148,19 +180,7 @@ function App() {
         );
 
         const entitlements = entitlementsByOrg.get(site.organizationId) ?? [];
-
-        let row: SiteOpportunityRow;
-        try {
-          const opportunities = await client.getSiteOpportunities(site.id);
-          row = buildSiteRow({ site, opportunities, entitlements });
-        } catch (siteError) {
-          row = buildSiteRow({
-            site,
-            opportunities: [],
-            entitlements,
-            loadError: siteError instanceof Error ? siteError.message : 'Opportunity load failed',
-          });
-        }
+        const row = await fetchRow(client, site, entitlements);
 
         rowsById.set(row.siteId, row);
         publishDataset();
@@ -175,7 +195,60 @@ function App() {
     }
   };
 
+  const refreshPaidCustomers = async () => {
+    const context = loadContextRef.current;
+    if (!context) {
+      return;
+    }
+
+    const paidSites = context.sites.filter(
+      (site) =>
+        customerGroupFromTier(
+          findLlmoEntitlement(context.entitlementsByOrg.get(site.organizationId) ?? [])?.tier,
+        ) === 'paid',
+    );
+
+    if (paidSites.length === 0) {
+      return;
+    }
+
+    setStatus('loading');
+    setError('');
+    setProgress(`Refreshing ${paidSites.length} paid sites`);
+
+    const rowsById = new Map(dataset.rows.map((row) => [row.siteId, row]));
+    const publishDataset = () => {
+      const sortedRows = [...rowsById.values()].sort((a, b) => a.siteName.localeCompare(b.siteName));
+      setDataset({ rows: sortedRows, generatedAt: new Date().toISOString() });
+    };
+
+    try {
+      await mapWithConcurrency(paidSites, OPPORTUNITY_FETCH_CONCURRENCY, async (site, index) => {
+        const percent = Math.round(((index + 1) / paidSites.length) * 100);
+        setProgress(
+          `Refreshing paid site ${index + 1} of ${paidSites.length} (${percent}%): ${site.baseURL}`,
+        );
+
+        const entitlements = context.entitlementsByOrg.get(site.organizationId) ?? [];
+        const row = await fetchRow(context.client, site, entitlements);
+
+        rowsById.set(row.siteId, row);
+        publishDataset();
+      });
+
+      setStatus('success');
+      setProgress(`Refreshed ${paidSites.length} paid sites`);
+    } catch (refreshError) {
+      setStatus('error');
+      setError(
+        refreshError instanceof Error ? refreshError.message : 'Failed to refresh paid customers',
+      );
+      setProgress('');
+    }
+  };
+
   const canLoad = status !== 'loading' && token.trim().length > 0 && baseUrl.trim().length > 0;
+  const canRefreshPaid = status !== 'loading' && hasLoadContext && groupedRows.paid.length > 0;
   const canExport = visibleRows.length > 0;
 
   return (
@@ -258,6 +331,8 @@ function App() {
         onExport={() =>
           downloadCsv(paidDataset, `offsite-opportunities-paid-${formatIsoWeek(dataset.generatedAt)}`)
         }
+        onRefresh={refreshPaidCustomers}
+        refreshDisabled={!canRefreshPaid}
       />
       <CustomerTable title="Trial customers" rows={groupedRows.trial} defaultOpen />
     </main>

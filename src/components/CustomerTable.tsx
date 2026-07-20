@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronDown, Download, ExternalLink } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, Download, ExternalLink, RefreshCw } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { OPPORTUNITY_SOURCES, type OpportunityIndicator, type SiteOpportunityRow } from '../types';
 import { StatusPill } from './StatusPill';
@@ -8,6 +8,8 @@ interface CustomerTableProps {
   rows: SiteOpportunityRow[];
   defaultOpen?: boolean;
   onExport?: () => void;
+  onRefresh?: () => void;
+  refreshDisabled?: boolean;
 }
 
 const sourceKeys = Object.keys(OPPORTUNITY_SOURCES) as Array<keyof typeof OPPORTUNITY_SOURCES>;
@@ -23,7 +25,14 @@ const INDICATOR_ORDER: Record<OpportunityIndicator, number> = {
   missing: 2,
 };
 
-export function CustomerTable({ title, rows, defaultOpen = true, onExport }: CustomerTableProps) {
+export function CustomerTable({
+  title,
+  rows,
+  defaultOpen = true,
+  onExport,
+  onRefresh,
+  refreshDisabled = false,
+}: CustomerTableProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [sort, setSort] = useState<{ column: SortColumn; direction: SortDirection } | null>(null);
 
@@ -87,6 +96,18 @@ export function CustomerTable({ title, rows, defaultOpen = true, onExport }: Cus
           <span>{title}</span>
           <strong>{rows.length}</strong>
         </button>
+        {onRefresh ? (
+          <button
+            type="button"
+            className="customer-section__export"
+            onClick={onRefresh}
+            disabled={refreshDisabled}
+            title="Re-check opportunities for these sites only, without reloading everything"
+          >
+            <RefreshCw size={14} />
+            Refresh
+          </button>
+        ) : null}
         {onExport ? (
           <button
             type="button"
