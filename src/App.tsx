@@ -21,6 +21,7 @@ import {
   formatIsoWeek,
   getOverviewCounts,
   groupRows,
+  isInternalTestCustomer,
   isLlmoSite,
   toCsv,
 } from './utils/dashboard';
@@ -248,12 +249,16 @@ function App() {
       return;
     }
 
-    const paidSites = context.sites.filter(
-      (site) =>
+    const paidSites = context.sites.filter((site) => {
+      const isPaid =
         customerGroupFromTier(
           findLlmoEntitlement(context.entitlementsByOrg.get(site.organizationId) ?? [])?.tier,
-        ) === 'paid',
-    );
+        ) === 'paid';
+
+      return (
+        isPaid && !isInternalTestCustomer({ siteName: site.name || site.baseURL, baseURL: site.baseURL })
+      );
+    });
 
     if (paidSites.length === 0) {
       return;

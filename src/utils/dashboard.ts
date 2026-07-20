@@ -52,9 +52,12 @@ export const normalizeOpportunityStatus = (status: string | undefined) => status
 
 const normalizeCustomerIdentity = (value: string) => value.trim().toLowerCase().replace(/\/+$/, '');
 
-export const isInternalTestCustomer = (row: SiteOpportunityRow) =>
-  INTERNAL_TEST_CUSTOMERS.has(normalizeCustomerIdentity(row.siteName)) ||
-  INTERNAL_TEST_CUSTOMERS.has(normalizeCustomerIdentity(row.baseURL));
+// Accepts anything with a siteName/baseURL — SiteOpportunityRow qualifies,
+// but so does a plain { siteName, baseURL } derived straight from a
+// SpacecatSite, before a full row has been built.
+export const isInternalTestCustomer = (identity: { siteName: string; baseURL: string }) =>
+  INTERNAL_TEST_CUSTOMERS.has(normalizeCustomerIdentity(identity.siteName)) ||
+  INTERNAL_TEST_CUSTOMERS.has(normalizeCustomerIdentity(identity.baseURL));
 
 export const resolveOpportunityDate = (opportunities: SpacecatOpportunity[]): string => {
   if (opportunities.length === 0) {
