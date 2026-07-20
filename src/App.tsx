@@ -256,7 +256,12 @@ function App() {
         ) === 'paid';
 
       return (
-        isPaid && !isInternalTestCustomer({ siteName: site.name || site.baseURL, baseURL: site.baseURL })
+        isPaid &&
+        !isInternalTestCustomer({
+          siteName: site.name || site.baseURL,
+          baseURL: site.baseURL,
+          organizationId: site.organizationId,
+        })
       );
     });
 

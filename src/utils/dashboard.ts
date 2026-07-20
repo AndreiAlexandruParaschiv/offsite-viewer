@@ -44,7 +44,18 @@ const INTERNAL_TEST_CUSTOMERS = new Set([
   'https://abcxyztest.com',
   'https://agldstqtrtest.digital.agl.com.au',
   'https://t3xvtcra96mvq6dyrq06oyqw2n8ew7kw.oastify.com/path/working/test',
+  'https://playwright-503-repro.com',
+  'https://xyz.com',
 ]);
+
+// Whole orgs known to be internal/test accounts — every site under one of
+// these is excluded, present and future, rather than needing each new
+// throwaway domain added to INTERNAL_TEST_CUSTOMERS by name as it appears.
+// Deliberately empty for now: a6286f15-86c3-4f18-b4ee-f5f37c894248 (the
+// ravitest.com org) also owns wsop.com, whose status as test-vs-real is
+// still unconfirmed — add it here (not just its other 3 sites above) once
+// that's settled.
+const INTERNAL_TEST_ORGANIZATIONS = new Set<string>([]);
 
 export const isLlmoSite = (site: SpacecatSite) => Boolean(site.config?.llmo);
 
@@ -52,12 +63,17 @@ export const normalizeOpportunityStatus = (status: string | undefined) => status
 
 const normalizeCustomerIdentity = (value: string) => value.trim().toLowerCase().replace(/\/+$/, '');
 
-// Accepts anything with a siteName/baseURL — SiteOpportunityRow qualifies,
-// but so does a plain { siteName, baseURL } derived straight from a
-// SpacecatSite, before a full row has been built.
-export const isInternalTestCustomer = (identity: { siteName: string; baseURL: string }) =>
+// Accepts anything with a siteName/baseURL/organizationId — SiteOpportunityRow
+// qualifies, but so does a plain object derived straight from a SpacecatSite,
+// before a full row has been built.
+export const isInternalTestCustomer = (identity: {
+  siteName: string;
+  baseURL: string;
+  organizationId: string;
+}) =>
   INTERNAL_TEST_CUSTOMERS.has(normalizeCustomerIdentity(identity.siteName)) ||
-  INTERNAL_TEST_CUSTOMERS.has(normalizeCustomerIdentity(identity.baseURL));
+  INTERNAL_TEST_CUSTOMERS.has(normalizeCustomerIdentity(identity.baseURL)) ||
+  INTERNAL_TEST_ORGANIZATIONS.has(identity.organizationId);
 
 export const resolveOpportunityDate = (opportunities: SpacecatOpportunity[]): string => {
   if (opportunities.length === 0) {
