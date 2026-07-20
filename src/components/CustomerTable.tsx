@@ -53,9 +53,16 @@ export function CustomerTable({ title, rows, defaultOpen = true, onExport }: Cus
         return factor * a.entitlementTier.localeCompare(b.entitlementTier);
       }
 
-      return (
-        factor * (INDICATOR_ORDER[a.indicators[sort.column]] - INDICATOR_ORDER[b.indicators[sort.column]])
-      );
+      const indicatorDiff =
+        INDICATOR_ORDER[a.indicators[sort.column]] - INDICATOR_ORDER[b.indicators[sort.column]];
+      if (indicatorDiff !== 0) {
+        return factor * indicatorDiff;
+      }
+
+      // Same status (e.g. both "visible"): most recent date first.
+      const dateA = a.opportunityDates[sort.column];
+      const dateB = b.opportunityDates[sort.column];
+      return factor * (dateB > dateA ? 1 : dateB < dateA ? -1 : 0);
     });
   }, [rows, sort]);
 
