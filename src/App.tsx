@@ -9,6 +9,7 @@ import {
   type DashboardDataset,
   type FetchStatus,
   type SiteOpportunityRow,
+  type SourceKey,
   type SpacecatEntitlement,
   type SpacecatSite,
 } from './types';
@@ -41,6 +42,8 @@ const CUSTOMER_GROUP_LOAD_PRIORITY: Record<CustomerGroup, number> = {
 const ENTITLEMENT_FETCH_CONCURRENCY = 20;
 const OPPORTUNITY_FETCH_CONCURRENCY = 12;
 
+const sourceKeysList = Object.keys(OPPORTUNITY_SOURCES) as SourceKey[];
+
 const formatTimestamp = (value?: string) => {
   if (!value) {
     return 'Not loaded';
@@ -52,22 +55,61 @@ const formatTimestamp = (value?: string) => {
   }).format(new Date(value));
 };
 
+// One extra API call per visible/ignored opportunity — the opportunity
+// object itself carries no suggestion count. Failures are left absent from
+// the result rather than surfaced, since a missing count is much less
+// disruptive here than a failed site load.
+const fetchSuggestionCounts = async (
+  client: SpacecatClient,
+  siteId: string,
+  row: SiteOpportunityRow,
+): Promise<Partial<Record<SourceKey, number>>> => {
+  const counts: Partial<Record<SourceKey, number>> = {};
+
+  await Promise.all(
+    sourceKeysList.map(async (sourceKey) => {
+      const opportunityId = row.opportunityIds[sourceKey];
+      if (!opportunityId) {
+        return;
+      }
+
+      try {
+        const suggestions = await client.getOpportunitySuggestions(siteId, opportunityId);
+        counts[sourceKey] = suggestions.length;
+      } catch {
+        // leave this source absent from counts on failure
+      }
+    }),
+  );
+
+  return counts;
+};
+
 const fetchRow = async (
   client: SpacecatClient,
   site: SpacecatSite,
   entitlements: SpacecatEntitlement[],
+  includeSuggestionCounts: boolean,
 ): Promise<SiteOpportunityRow> => {
+  let row: SiteOpportunityRow;
+
   try {
     const opportunities = await client.getSiteOpportunities(site.id);
-    return buildSiteRow({ site, opportunities, entitlements });
+    row = buildSiteRow({ site, opportunities, entitlements });
   } catch (siteError) {
-    return buildSiteRow({
+    row = buildSiteRow({
       site,
       opportunities: [],
       entitlements,
       loadError: siteError instanceof Error ? siteError.message : 'Opportunity load failed',
     });
   }
+
+  if (includeSuggestionCounts) {
+    row.suggestionCounts = await fetchSuggestionCounts(client, site.id, row);
+  }
+
+  return row;
 };
 
 const downloadCsv = (dataset: DashboardDataset, filenamePrefix: string) => {
@@ -180,7 +222,12 @@ function App() {
         );
 
         const entitlements = entitlementsByOrg.get(site.organizationId) ?? [];
-        const row = await fetchRow(client, site, entitlements);
+        const row = await fetchRow(
+          client,
+          site,
+          entitlements,
+          customerGroupBySite.get(site.id) === 'paid',
+        );
 
         rowsById.set(row.siteId, row);
         publishDataset();
@@ -230,7 +277,7 @@ function App() {
         );
 
         const entitlements = context.entitlementsByOrg.get(site.organizationId) ?? [];
-        const row = await fetchRow(context.client, site, entitlements);
+        const row = await fetchRow(context.client, site, entitlements, true);
 
         rowsById.set(row.siteId, row);
         publishDataset();

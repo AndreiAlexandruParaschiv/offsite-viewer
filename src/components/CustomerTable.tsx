@@ -169,6 +169,7 @@ export function CustomerTable({
                         <StatusPill
                           status={row.indicators[sourceKey]}
                           date={row.opportunityDates[sourceKey]}
+                          suggestionCount={row.suggestionCounts?.[sourceKey]}
                         />
                       </td>
                     ))}

@@ -410,6 +410,13 @@ tbody tr:hover td {
   white-space: nowrap;
 }
 
+.status-cell__suggestions {
+  color: #415048;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;

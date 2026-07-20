@@ -34,7 +34,7 @@ const INTERNAL_TEST_CUSTOMERS = new Set([
   'https://frescopa-unibuc.testaemcloud.com',
   'https://llmo-onboardtest10.com',
   'https://main--fastowl28790--aemsitestrial.aem.page',
-  'https://main--wknd-universal--tuckerelliott.aem.pag',
+  'https://main--wknd-universal--tuckerelliott.aem.page',
   'https://test.net',
   'https://tester.com',
   'https://testing.com',

@@ -15,8 +15,18 @@ const formatDate = (value: string) => {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(parsed);
 };
 
-export function StatusPill({ status, date }: { status: OpportunityIndicator; date?: string }) {
-  const formattedDate = (status === 'visible' || status === 'ignored') && date ? formatDate(date) : '';
+interface StatusPillProps {
+  status: OpportunityIndicator;
+  date?: string;
+  suggestionCount?: number;
+}
+
+export function StatusPill({ status, date, suggestionCount }: StatusPillProps) {
+  const showExtras = status === 'visible' || status === 'ignored';
+  const formattedDate = showExtras && date ? formatDate(date) : '';
+  // suggestionCount is absent (not 0) when it hasn't been fetched for this
+  // row, so only render it once it's actually known.
+  const hasSuggestionCount = showExtras && suggestionCount !== undefined;
 
   return (
     <span className="status-cell">
@@ -25,6 +35,11 @@ export function StatusPill({ status, date }: { status: OpportunityIndicator; dat
         {LABELS[status]}
       </span>
       {formattedDate ? <span className="status-cell__date">{formattedDate}</span> : null}
+      {hasSuggestionCount ? (
+        <span className="status-cell__suggestions">
+          {suggestionCount} suggestion{suggestionCount === 1 ? '' : 's'}
+        </span>
+      ) : null}
     </span>
   );
 }

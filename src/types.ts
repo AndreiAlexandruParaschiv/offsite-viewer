@@ -66,6 +66,13 @@ export interface SpacecatEntitlement {
   [key: string]: unknown;
 }
 
+export interface SpacecatSuggestion {
+  id: string;
+  opportunityId: string;
+  status: string;
+  [key: string]: unknown;
+}
+
 export interface SiteOpportunityRow {
   siteId: string;
   siteName: string;
@@ -76,6 +83,10 @@ export interface SiteOpportunityRow {
   indicators: Record<SourceKey, OpportunityIndicator>;
   opportunityIds: Record<SourceKey, string>;
   opportunityDates: Record<SourceKey, string>;
+  // Suggestion counts per source, fetched separately (one extra call per
+  // opportunity) and only populated for rows this was requested for — absent
+  // (not zero) means "not fetched", not "zero suggestions".
+  suggestionCounts?: Partial<Record<SourceKey, number>>;
   loadError?: string;
 }
 

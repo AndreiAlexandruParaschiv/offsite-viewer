@@ -1,4 +1,4 @@
-import type { SpacecatEntitlement, SpacecatOpportunity, SpacecatSite } from '../types';
+import type { SpacecatEntitlement, SpacecatOpportunity, SpacecatSite, SpacecatSuggestion } from '../types';
 
 interface SitesPagedResponse {
   sites: SpacecatSite[];
@@ -92,6 +92,12 @@ export class SpacecatClient {
   async getEntitlements(organizationId: string): Promise<SpacecatEntitlement[]> {
     return this.request<SpacecatEntitlement[]>(
       `/organizations/${encodeURIComponent(organizationId)}/entitlements`,
+    );
+  }
+
+  async getOpportunitySuggestions(siteId: string, opportunityId: string): Promise<SpacecatSuggestion[]> {
+    return this.request<SpacecatSuggestion[]>(
+      `/sites/${encodeURIComponent(siteId)}/opportunities/${encodeURIComponent(opportunityId)}/suggestions?view=minimal`,
     );
   }
 }
