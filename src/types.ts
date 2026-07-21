@@ -73,40 +73,6 @@ export interface SpacecatSuggestion {
   [key: string]: unknown;
 }
 
-export interface SpacecatDrsJobResult {
-  domain: string;
-  datasetId: string;
-  status: 'success' | 'error';
-  error?: string;
-  [key: string]: unknown;
-}
-
-// The `offsite-brand-presence` audit's auditResult shape — the upstream audit
-// that scrapes brand-mention source URLs, from which reddit-analysis /
-// youtube-analysis / cited-analysis opportunities are created. Wikipedia is
-// handled entirely separately (by Mystique), so this tells us nothing about it.
-export interface SpacecatOffsiteBrandPresenceAuditResult {
-  success: boolean;
-  error?: string;
-  urlCounts?: Record<string, number>;
-  drsJobs?: SpacecatDrsJobResult[];
-  weeks?: string[];
-  [key: string]: unknown;
-}
-
-export interface SpacecatAudit {
-  siteId: string;
-  auditedAt?: string;
-  auditResult?: SpacecatOffsiteBrandPresenceAuditResult;
-  [key: string]: unknown;
-}
-
-// Why a source shows "missing" (no visible/ignored opportunity), derived from
-// the offsite-brand-presence audit: 'no-source-urls' means the audit ran fine
-// but found nothing to scrape for that source (an upstream data/config gap,
-// not an audit failure); 'audit-error' means the audit itself failed.
-export type MissingReason = 'no-source-urls' | 'audit-error';
-
 export interface SiteOpportunityRow {
   siteId: string;
   siteName: string;
@@ -121,10 +87,6 @@ export interface SiteOpportunityRow {
   // opportunity) and only populated for rows this was requested for — absent
   // (not zero) means "not fetched", not "zero suggestions".
   suggestionCounts?: Partial<Record<SourceKey, number>>;
-  // Why a "missing" source is missing (reddit/youtube/cited only — see
-  // MissingReason). Absent means either not "missing", not fetched for this
-  // row, or the audit data doesn't explain it either way.
-  missingReasons?: Partial<Record<SourceKey, MissingReason>>;
   loadError?: string;
 }
 
