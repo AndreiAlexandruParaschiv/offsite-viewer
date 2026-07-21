@@ -243,20 +243,22 @@ function App() {
     }
   };
 
-  const refreshPaidCustomers = async () => {
+  // Suggestion counts stay paid-only (bounded API cost — see fetchRow), so a
+  // trial refresh skips that extra per-opportunity call entirely.
+  const refreshCustomerGroup = async (group: CustomerGroup) => {
     const context = loadContextRef.current;
     if (!context) {
       return;
     }
 
-    const paidSites = context.sites.filter((site) => {
-      const isPaid =
+    const groupSites = context.sites.filter((site) => {
+      const isInGroup =
         customerGroupFromTier(
           findLlmoEntitlement(context.entitlementsByOrg.get(site.organizationId) ?? [])?.tier,
-        ) === 'paid';
+        ) === group;
 
       return (
-        isPaid &&
+        isInGroup &&
         !isInternalTestCustomer({
           siteName: site.name || site.baseURL,
           baseURL: site.baseURL,
@@ -265,13 +267,13 @@ function App() {
       );
     });
 
-    if (paidSites.length === 0) {
+    if (groupSites.length === 0) {
       return;
     }
 
     setStatus('loading');
     setError('');
-    setProgress(`Refreshing ${paidSites.length} paid sites`);
+    setProgress(`Refreshing ${groupSites.length} ${group} sites`);
 
     const rowsById = new Map(dataset.rows.map((row) => [row.siteId, row]));
     const publishDataset = () => {
@@ -280,25 +282,25 @@ function App() {
     };
 
     try {
-      await mapWithConcurrency(paidSites, OPPORTUNITY_FETCH_CONCURRENCY, async (site, index) => {
-        const percent = Math.round(((index + 1) / paidSites.length) * 100);
+      await mapWithConcurrency(groupSites, OPPORTUNITY_FETCH_CONCURRENCY, async (site, index) => {
+        const percent = Math.round(((index + 1) / groupSites.length) * 100);
         setProgress(
-          `Refreshing paid site ${index + 1} of ${paidSites.length} (${percent}%): ${site.baseURL}`,
+          `Refreshing ${group} site ${index + 1} of ${groupSites.length} (${percent}%): ${site.baseURL}`,
         );
 
         const entitlements = context.entitlementsByOrg.get(site.organizationId) ?? [];
-        const row = await fetchRow(context.client, site, entitlements, true);
+        const row = await fetchRow(context.client, site, entitlements, group === 'paid');
 
         rowsById.set(row.siteId, row);
         publishDataset();
       });
 
       setStatus('success');
-      setProgress(`Refreshed ${paidSites.length} paid sites`);
+      setProgress(`Refreshed ${groupSites.length} ${group} sites`);
     } catch (refreshError) {
       setStatus('error');
       setError(
-        refreshError instanceof Error ? refreshError.message : 'Failed to refresh paid customers',
+        refreshError instanceof Error ? refreshError.message : `Failed to refresh ${group} customers`,
       );
       setProgress('');
     }
@@ -306,6 +308,7 @@ function App() {
 
   const canLoad = status !== 'loading' && token.trim().length > 0 && baseUrl.trim().length > 0;
   const canRefreshPaid = status !== 'loading' && hasLoadContext && groupedRows.paid.length > 0;
+  const canRefreshTrial = status !== 'loading' && hasLoadContext && groupedRows.trial.length > 0;
   const canExport = visibleRows.length > 0;
 
   return (
@@ -388,10 +391,16 @@ function App() {
         onExport={() =>
           downloadCsv(paidDataset, `offsite-opportunities-paid-${formatIsoWeek(dataset.generatedAt)}`)
         }
-        onRefresh={refreshPaidCustomers}
+        onRefresh={() => refreshCustomerGroup('paid')}
         refreshDisabled={!canRefreshPaid}
       />
-      <CustomerTable title="Trial customers" rows={groupedRows.trial} defaultOpen />
+      <CustomerTable
+        title="Trial customers"
+        rows={groupedRows.trial}
+        defaultOpen
+        onRefresh={() => refreshCustomerGroup('trial')}
+        refreshDisabled={!canRefreshTrial}
+      />
     </main>
   );
 }
