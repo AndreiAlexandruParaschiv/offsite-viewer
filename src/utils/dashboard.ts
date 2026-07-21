@@ -2,9 +2,11 @@ import {
   OPPORTUNITY_SOURCES,
   type CustomerGroup,
   type DashboardDataset,
+  type MissingReason,
   type OpportunityIndicator,
   type SiteOpportunityRow,
   type SourceKey,
+  type SpacecatAudit,
   type SpacecatEntitlement,
   type SpacecatOpportunity,
   type SpacecatSite,
@@ -111,6 +113,56 @@ export const indicatorFromOpportunities = (
   }
 
   return { indicator: 'missing', opportunityId: '', date: '' };
+};
+
+// Maps a source to the domain key used in the offsite-brand-presence audit's
+// auditResult. Wikipedia isn't part of this audit at all (handled separately
+// by Mystique), so it's deliberately absent here.
+const AUDIT_DOMAIN_BY_SOURCE: Partial<Record<SourceKey, string>> = {
+  reddit: 'reddit.com',
+  youtube: 'youtube.com',
+  cited: 'top-cited',
+};
+
+// Explains a "missing" source using the offsite-brand-presence audit result:
+// 'no-source-urls' when the audit ran fine but found nothing to scrape for
+// that source (an upstream data gap, not an audit problem); 'audit-error'
+// when the audit itself failed, or DRS scraping for that source errored.
+// Returns undefined when the source isn't "missing", isn't covered by this
+// audit (wikipedia), or the audit data doesn't explain it either way.
+export const explainMissingOpportunity = (
+  sourceKey: SourceKey,
+  indicator: OpportunityIndicator,
+  audit: SpacecatAudit | null,
+): MissingReason | undefined => {
+  if (indicator !== 'missing') {
+    return undefined;
+  }
+
+  const domain = AUDIT_DOMAIN_BY_SOURCE[sourceKey];
+  if (!domain || !audit?.auditResult) {
+    return undefined;
+  }
+
+  const { success, urlCounts, drsJobs } = audit.auditResult;
+  if (success === false) {
+    return 'audit-error';
+  }
+
+  if (domain === 'top-cited') {
+    const citedJob = drsJobs?.find((job) => job.domain === 'top-cited');
+    if (!citedJob) {
+      return 'no-source-urls';
+    }
+    return citedJob.status === 'error' ? 'audit-error' : undefined;
+  }
+
+  if (urlCounts?.[domain] === 0) {
+    return 'no-source-urls';
+  }
+
+  const domainJob = drsJobs?.find((job) => job.domain === domain);
+  return domainJob?.status === 'error' ? 'audit-error' : undefined;
 };
 
 export const findLlmoEntitlement = (entitlements: SpacecatEntitlement[]) => {

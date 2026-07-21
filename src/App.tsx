@@ -8,9 +8,11 @@ import {
   type CustomerGroup,
   type DashboardDataset,
   type FetchStatus,
+  type MissingReason,
   type OpportunityIndicator,
   type SiteOpportunityRow,
   type SourceKey,
+  type SpacecatAudit,
   type SpacecatEntitlement,
   type SpacecatSite,
 } from './types';
@@ -18,6 +20,7 @@ import { mapWithConcurrency } from './utils/concurrency';
 import {
   buildSiteRow,
   customerGroupFromTier,
+  explainMissingOpportunity,
   findLlmoEntitlement,
   formatIsoWeek,
   getOverviewCounts,
@@ -26,6 +29,11 @@ import {
   isLlmoSite,
   toCsv,
 } from './utils/dashboard';
+
+// Upstream audit that scrapes brand-mention source URLs; reddit-analysis /
+// youtube-analysis / cited-analysis opportunities are only created from what
+// it finds. Wikipedia isn't covered — see explainMissingOpportunity.
+const OFFSITE_BRAND_PRESENCE_AUDIT_TYPE = 'offsite-brand-presence';
 
 const TOKEN_STORAGE_KEY = 'offsite-viewer.token';
 const BASE_URL_STORAGE_KEY = 'offsite-viewer.baseUrl';
@@ -87,11 +95,45 @@ const fetchSuggestionCounts = async (
   return counts;
 };
 
+// One audit fetch per site (not per opportunity — much cheaper than
+// suggestion counts), only bothered with if something is actually "missing"
+// among the sources this audit can explain.
+const fetchMissingReasons = async (
+  client: SpacecatClient,
+  siteId: string,
+  row: SiteOpportunityRow,
+): Promise<Partial<Record<SourceKey, MissingReason>>> => {
+  const hasExplainableMissingSource = sourceKeysList.some(
+    (sourceKey) => sourceKey !== 'wikipedia' && row.indicators[sourceKey] === 'missing',
+  );
+
+  if (!hasExplainableMissingSource) {
+    return {};
+  }
+
+  let audit: SpacecatAudit | null = null;
+  try {
+    audit = await client.getLatestAudit(siteId, OFFSITE_BRAND_PRESENCE_AUDIT_TYPE);
+  } catch {
+    return {};
+  }
+
+  const reasons: Partial<Record<SourceKey, MissingReason>> = {};
+  sourceKeysList.forEach((sourceKey) => {
+    const reason = explainMissingOpportunity(sourceKey, row.indicators[sourceKey], audit);
+    if (reason) {
+      reasons[sourceKey] = reason;
+    }
+  });
+
+  return reasons;
+};
+
 const fetchRow = async (
   client: SpacecatClient,
   site: SpacecatSite,
   entitlements: SpacecatEntitlement[],
-  includeSuggestionCounts: boolean,
+  includePaidExtras: boolean,
 ): Promise<SiteOpportunityRow> => {
   let row: SiteOpportunityRow;
 
@@ -107,8 +149,13 @@ const fetchRow = async (
     });
   }
 
-  if (includeSuggestionCounts) {
-    row.suggestionCounts = await fetchSuggestionCounts(client, site.id, row);
+  if (includePaidExtras) {
+    const [suggestionCounts, missingReasons] = await Promise.all([
+      fetchSuggestionCounts(client, site.id, row),
+      fetchMissingReasons(client, site.id, row),
+    ]);
+    row.suggestionCounts = suggestionCounts;
+    row.missingReasons = missingReasons;
   }
 
   return row;

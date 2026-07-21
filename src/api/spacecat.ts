@@ -1,4 +1,10 @@
-import type { SpacecatEntitlement, SpacecatOpportunity, SpacecatSite, SpacecatSuggestion } from '../types';
+import type {
+  SpacecatAudit,
+  SpacecatEntitlement,
+  SpacecatOpportunity,
+  SpacecatSite,
+  SpacecatSuggestion,
+} from '../types';
 
 interface SitesPagedResponse {
   sites: SpacecatSite[];
@@ -116,5 +122,19 @@ export class SpacecatClient {
       `/sites/${encodeURIComponent(siteId)}/opportunities/${encodeURIComponent(opportunityId)}`,
       { method: 'PATCH', body: { status } },
     );
+  }
+
+  async getLatestAudit(siteId: string, auditType: string): Promise<SpacecatAudit | null> {
+    try {
+      return await this.request<SpacecatAudit>(
+        `/sites/${encodeURIComponent(siteId)}/audits/${encodeURIComponent(auditType)}/latest`,
+      );
+    } catch (error) {
+      if (error instanceof Error && /^404\b/.test(error.message)) {
+        return null;
+      }
+
+      throw error;
+    }
   }
 }

@@ -208,6 +208,7 @@ export function CustomerTable({
                               status={status}
                               date={row.opportunityDates[sourceKey]}
                               suggestionCount={row.suggestionCounts?.[sourceKey]}
+                              missingReason={row.missingReasons?.[sourceKey]}
                             />
                             {onToggleStatus && status !== 'missing' ? (
                               <button

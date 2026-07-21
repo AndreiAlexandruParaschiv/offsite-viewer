@@ -417,6 +417,20 @@ tbody tr:hover td {
   white-space: nowrap;
 }
 
+.status-cell__reason {
+  font-size: 0.72rem;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+.status-cell__reason--no-source-urls {
+  color: #667063;
+}
+
+.status-cell__reason--audit-error {
+  color: #9d261f;
+}
+
 .status-toggle-cell {
   display: inline-flex;
   align-items: center;
