@@ -14,6 +14,19 @@ const sourceEntries = Object.entries(OPPORTUNITY_SOURCES) as Array<
   [SourceKey, (typeof OPPORTUNITY_SOURCES)[SourceKey]]
 >;
 
+// The production @spacecat Slack bot's user ID (confirmed from real
+// `run audit` messages in #aem-sites-optimizer-automation), used to build a
+// real Slack mention rather than literal "@spacecat" text, which Slack
+// doesn't resolve/highlight on its own.
+const SPACECAT_SLACK_BOT_MENTION = '<@U05AMKKSZPG>';
+
+// The bot expects a bare domain (no scheme), matching how it's actually
+// invoked in practice — e.g. "run audit lovesac.com offsite-brand-presence".
+export const spacecatAuditCommand = (baseURL: string): string => {
+  const domain = baseURL.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  return `${SPACECAT_SLACK_BOT_MENTION} run audit ${domain} offsite-brand-presence`;
+};
+
 const LLMO_PRODUCT_HINTS = ['llmo', 'LLMO', 'ai-visibility', 'AI_VISIBILITY', 'llm_optimizer', 'LLM_OPTIMIZER'];
 // Internal/test/dev-preview sites and onboarding-flow probes that shouldn't
 // show up as real customers, in either the paid or trial tables.

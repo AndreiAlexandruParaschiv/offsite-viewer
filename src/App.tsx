@@ -449,6 +449,7 @@ function App() {
         onRefresh={() => refreshCustomerGroup('paid')}
         refreshDisabled={!canRefreshPaid}
         onToggleStatus={toggleOpportunityStatus}
+        enableAuditCommand
       />
       <CustomerTable
         title="Trial customers"

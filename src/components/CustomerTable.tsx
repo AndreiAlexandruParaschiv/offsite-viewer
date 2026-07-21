@@ -1,7 +1,9 @@
 import {
   ArrowDown,
   ArrowUp,
+  Check,
   ChevronDown,
+  Clipboard,
   Download,
   Eye,
   EyeOff,
@@ -16,6 +18,7 @@ import {
   type SiteOpportunityRow,
   type SourceKey,
 } from '../types';
+import { spacecatAuditCommand } from '../utils/dashboard';
 import { StatusPill } from './StatusPill';
 
 interface CustomerTableProps {
@@ -26,6 +29,12 @@ interface CustomerTableProps {
   onRefresh?: () => void;
   refreshDisabled?: boolean;
   onToggleStatus?: (row: SiteOpportunityRow, sourceKey: SourceKey) => Promise<void>;
+  // Shows a per-row "copy Slack audit command" button plus a header button to
+  // copy all of them at once — the @spacecat bot's `run audit` command has no
+  // safe way to be sent directly from this browser-only app (would require a
+  // backend to hold a Slack token), so copy-to-clipboard is the practical
+  // middle ground.
+  enableAuditCommand?: boolean;
 }
 
 const sourceKeys = Object.keys(OPPORTUNITY_SOURCES) as Array<keyof typeof OPPORTUNITY_SOURCES>;
@@ -41,6 +50,8 @@ const INDICATOR_ORDER: Record<OpportunityIndicator, number> = {
   missing: 2,
 };
 
+const COPY_FEEDBACK_MS = 1800;
+
 export function CustomerTable({
   title,
   rows,
@@ -49,10 +60,37 @@ export function CustomerTable({
   onRefresh,
   refreshDisabled = false,
   onToggleStatus,
+  enableAuditCommand = false,
 }: CustomerTableProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [sort, setSort] = useState<{ column: SortColumn; direction: SortDirection } | null>(null);
   const [pendingToggle, setPendingToggle] = useState<string | null>(null);
+  const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
+  const [copiedAll, setCopiedAll] = useState(false);
+
+  const copyText = async (text: string): Promise<boolean> => {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleCopyRowCommand = async (row: SiteOpportunityRow) => {
+    if (await copyText(spacecatAuditCommand(row.baseURL))) {
+      setCopiedRowId(row.siteId);
+      setTimeout(() => setCopiedRowId((current) => (current === row.siteId ? null : current)), COPY_FEEDBACK_MS);
+    }
+  };
+
+  const handleCopyAllCommands = async () => {
+    const text = rows.map((row) => spacecatAuditCommand(row.baseURL)).join('\n');
+    if (await copyText(text)) {
+      setCopiedAll(true);
+      setTimeout(() => setCopiedAll(false), COPY_FEEDBACK_MS);
+    }
+  };
 
   const handleToggleStatus = async (row: SiteOpportunityRow, sourceKey: SourceKey) => {
     if (!onToggleStatus) {
@@ -151,6 +189,18 @@ export function CustomerTable({
             Export CSV
           </button>
         ) : null}
+        {enableAuditCommand ? (
+          <button
+            type="button"
+            className="customer-section__export"
+            onClick={handleCopyAllCommands}
+            disabled={rows.length === 0}
+            title="Copy an @spacecat run audit ... command for every site in this table, one per line"
+          >
+            {copiedAll ? <Check size={14} /> : <Clipboard size={14} />}
+            {copiedAll ? `Copied ${rows.length}` : 'Copy audit commands'}
+          </button>
+        ) : null}
       </div>
 
       {isOpen ? (
@@ -189,7 +239,23 @@ export function CustomerTable({
                   <tr key={row.siteId}>
                     <td>
                       <div className="site-cell">
-                        <strong>{row.siteName}</strong>
+                        <div className="site-cell__name-row">
+                          <strong>{row.siteName}</strong>
+                          {enableAuditCommand ? (
+                            <button
+                              type="button"
+                              className="site-cell__copy-command"
+                              onClick={() => handleCopyRowCommand(row)}
+                              title="Copy @spacecat run audit ... command for this site"
+                            >
+                              {copiedRowId === row.siteId ? (
+                                <Check size={12} />
+                              ) : (
+                                <Clipboard size={12} />
+                              )}
+                            </button>
+                          ) : null}
+                        </div>
                         <a href={row.baseURL} target="_blank" rel="noreferrer">
                           {row.baseURL}
                           <ExternalLink size={13} aria-hidden="true" />
