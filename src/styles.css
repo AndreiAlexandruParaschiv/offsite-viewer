@@ -417,6 +417,35 @@ tbody tr:hover td {
   white-space: nowrap;
 }
 
+.status-toggle-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-toggle-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: #667063;
+  background: transparent;
+  border: 1px solid #d9ded4;
+  border-radius: 6px;
+}
+
+.status-toggle-button:hover:not(:disabled) {
+  color: #17201a;
+  border-color: #a9b1a5;
+}
+
+.status-toggle-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;

@@ -39,12 +39,18 @@ export class SpacecatClient {
     this.token = token.trim().replace(/^Bearer\s+/i, '');
   }
 
-  private async request<T>(path: string): Promise<T> {
+  private async request<T>(
+    path: string,
+    init?: { method?: string; body?: unknown },
+  ): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
+      method: init?.method ?? 'GET',
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${this.token}`,
+        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       },
+      body: init?.body ? JSON.stringify(init.body) : undefined,
     });
 
     if (!response.ok) {
@@ -98,6 +104,17 @@ export class SpacecatClient {
   async getOpportunitySuggestions(siteId: string, opportunityId: string): Promise<SpacecatSuggestion[]> {
     return this.request<SpacecatSuggestion[]>(
       `/sites/${encodeURIComponent(siteId)}/opportunities/${encodeURIComponent(opportunityId)}/suggestions?view=minimal`,
+    );
+  }
+
+  async updateOpportunityStatus(
+    siteId: string,
+    opportunityId: string,
+    status: 'NEW' | 'IGNORED',
+  ): Promise<SpacecatOpportunity> {
+    return this.request<SpacecatOpportunity>(
+      `/sites/${encodeURIComponent(siteId)}/opportunities/${encodeURIComponent(opportunityId)}`,
+      { method: 'PATCH', body: { status } },
     );
   }
 }

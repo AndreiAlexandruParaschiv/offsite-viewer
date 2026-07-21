@@ -8,6 +8,7 @@ import {
   type CustomerGroup,
   type DashboardDataset,
   type FetchStatus,
+  type OpportunityIndicator,
   type SiteOpportunityRow,
   type SourceKey,
   type SpacecatEntitlement,
@@ -306,6 +307,58 @@ function App() {
     }
   };
 
+  // Flips a single opportunity's status in production via PATCH — visible
+  // (NEW) <-> ignored (IGNORED). Confirms first since this is a real write
+  // other tools/teams may also read, not just a display toggle.
+  const toggleOpportunityStatus = async (row: SiteOpportunityRow, sourceKey: SourceKey) => {
+    const context = loadContextRef.current;
+    const currentStatus = row.indicators[sourceKey];
+    const opportunityId = row.opportunityIds[sourceKey];
+
+    if (!context || !opportunityId || currentStatus === 'missing') {
+      return;
+    }
+
+    const nextStatus: OpportunityIndicator = currentStatus === 'visible' ? 'ignored' : 'visible';
+    const sourceLabel = OPPORTUNITY_SOURCES[sourceKey].label;
+
+    const confirmed = window.confirm(
+      `Set the ${sourceLabel} opportunity for "${row.siteName}" to ${nextStatus === 'visible' ? 'visible (NEW)' : 'ignored'}?\n\nThis updates live production data.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await context.client.updateOpportunityStatus(
+        row.siteId,
+        opportunityId,
+        nextStatus === 'visible' ? 'NEW' : 'IGNORED',
+      );
+    } catch (toggleError) {
+      window.alert(
+        `Failed to update ${sourceLabel} status: ${
+          toggleError instanceof Error ? toggleError.message : 'unknown error'
+        }`,
+      );
+      return;
+    }
+
+    setDataset((current) => ({
+      ...current,
+      rows: current.rows.map((currentRow) =>
+        currentRow.siteId === row.siteId
+          ? {
+              ...currentRow,
+              indicators: { ...currentRow.indicators, [sourceKey]: nextStatus },
+              opportunityDates: { ...currentRow.opportunityDates, [sourceKey]: new Date().toISOString() },
+            }
+          : currentRow,
+      ),
+    }));
+  };
+
   const canLoad = status !== 'loading' && token.trim().length > 0 && baseUrl.trim().length > 0;
   const canRefreshPaid = status !== 'loading' && hasLoadContext && groupedRows.paid.length > 0;
   const canRefreshTrial = status !== 'loading' && hasLoadContext && groupedRows.trial.length > 0;
@@ -393,6 +446,7 @@ function App() {
         }
         onRefresh={() => refreshCustomerGroup('paid')}
         refreshDisabled={!canRefreshPaid}
+        onToggleStatus={toggleOpportunityStatus}
       />
       <CustomerTable
         title="Trial customers"
@@ -400,6 +454,7 @@ function App() {
         defaultOpen
         onRefresh={() => refreshCustomerGroup('trial')}
         refreshDisabled={!canRefreshTrial}
+        onToggleStatus={toggleOpportunityStatus}
       />
     </main>
   );

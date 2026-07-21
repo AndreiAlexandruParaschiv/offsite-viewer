@@ -1,6 +1,21 @@
-import { ArrowDown, ArrowUp, ChevronDown, Download, ExternalLink, RefreshCw } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  Download,
+  Eye,
+  EyeOff,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { OPPORTUNITY_SOURCES, type OpportunityIndicator, type SiteOpportunityRow } from '../types';
+import {
+  OPPORTUNITY_SOURCES,
+  type OpportunityIndicator,
+  type SiteOpportunityRow,
+  type SourceKey,
+} from '../types';
 import { StatusPill } from './StatusPill';
 
 interface CustomerTableProps {
@@ -10,6 +25,7 @@ interface CustomerTableProps {
   onExport?: () => void;
   onRefresh?: () => void;
   refreshDisabled?: boolean;
+  onToggleStatus?: (row: SiteOpportunityRow, sourceKey: SourceKey) => Promise<void>;
 }
 
 const sourceKeys = Object.keys(OPPORTUNITY_SOURCES) as Array<keyof typeof OPPORTUNITY_SOURCES>;
@@ -32,9 +48,25 @@ export function CustomerTable({
   onExport,
   onRefresh,
   refreshDisabled = false,
+  onToggleStatus,
 }: CustomerTableProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [sort, setSort] = useState<{ column: SortColumn; direction: SortDirection } | null>(null);
+  const [pendingToggle, setPendingToggle] = useState<string | null>(null);
+
+  const handleToggleStatus = async (row: SiteOpportunityRow, sourceKey: SourceKey) => {
+    if (!onToggleStatus) {
+      return;
+    }
+
+    const key = `${row.siteId}:${sourceKey}`;
+    setPendingToggle(key);
+    try {
+      await onToggleStatus(row, sourceKey);
+    } finally {
+      setPendingToggle((current) => (current === key ? null : current));
+    }
+  };
 
   const toggleSort = (column: SortColumn) => {
     setSort((current) => {
@@ -164,15 +196,44 @@ export function CustomerTable({
                         </a>
                       </div>
                     </td>
-                    {sourceKeys.map((sourceKey) => (
-                      <td key={sourceKey}>
-                        <StatusPill
-                          status={row.indicators[sourceKey]}
-                          date={row.opportunityDates[sourceKey]}
-                          suggestionCount={row.suggestionCounts?.[sourceKey]}
-                        />
-                      </td>
-                    ))}
+                    {sourceKeys.map((sourceKey) => {
+                      const status = row.indicators[sourceKey];
+                      const toggleKey = `${row.siteId}:${sourceKey}`;
+                      const isPending = pendingToggle === toggleKey;
+
+                      return (
+                        <td key={sourceKey}>
+                          <div className="status-toggle-cell">
+                            <StatusPill
+                              status={status}
+                              date={row.opportunityDates[sourceKey]}
+                              suggestionCount={row.suggestionCounts?.[sourceKey]}
+                            />
+                            {onToggleStatus && status !== 'missing' ? (
+                              <button
+                                type="button"
+                                className="status-toggle-button"
+                                disabled={isPending}
+                                onClick={() => handleToggleStatus(row, sourceKey)}
+                                title={
+                                  status === 'visible'
+                                    ? `Mark ${OPPORTUNITY_SOURCES[sourceKey].label} as ignored`
+                                    : `Mark ${OPPORTUNITY_SOURCES[sourceKey].label} as visible`
+                                }
+                              >
+                                {isPending ? (
+                                  <Loader2 size={13} className="spin" />
+                                ) : status === 'visible' ? (
+                                  <EyeOff size={13} />
+                                ) : (
+                                  <Eye size={13} />
+                                )}
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                      );
+                    })}
                     <td>
                       <span className="tier-label">{row.entitlementTier}</span>
                     </td>
