@@ -423,7 +423,9 @@ function App() {
         </div>
         <div className="header-status">
           <ShieldCheck size={18} aria-hidden="true" />
-          <span>Production v1</span>
+          <span title={__APP_BUILD_DATE__ ? `Built from commit dated ${__APP_BUILD_DATE__}` : undefined}>
+            Production {__APP_VERSION__}
+          </span>
         </div>
       </header>
 
