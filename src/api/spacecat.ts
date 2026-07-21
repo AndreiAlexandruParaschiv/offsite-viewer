@@ -127,7 +127,7 @@ export class SpacecatClient {
   async getLatestAudit(siteId: string, auditType: string): Promise<SpacecatAudit | null> {
     try {
       return await this.request<SpacecatAudit>(
-        `/sites/${encodeURIComponent(siteId)}/audits/${encodeURIComponent(auditType)}/latest`,
+        `/sites/${encodeURIComponent(siteId)}/latest-audit/${encodeURIComponent(auditType)}`,
       );
     } catch (error) {
       if (error instanceof Error && /^404\b/.test(error.message)) {
