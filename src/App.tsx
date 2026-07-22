@@ -17,13 +17,13 @@ import {
 import { mapWithConcurrency } from './utils/concurrency';
 import {
   buildSiteRow,
-  customerGroupFromTier,
   findLlmoEntitlement,
   formatIsoWeek,
   getOverviewCounts,
   groupRows,
   isInternalTestCustomer,
   isLlmoSite,
+  resolveCustomerGroup,
   toCsv,
 } from './utils/dashboard';
 
@@ -195,8 +195,9 @@ function App() {
       const customerGroupBySite = new Map(
         llmoSites.map((site) => [
           site.id,
-          customerGroupFromTier(
+          resolveCustomerGroup(
             findLlmoEntitlement(entitlementsByOrg.get(site.organizationId) ?? [])?.tier,
+            site.id,
           ),
         ]),
       );
@@ -254,8 +255,9 @@ function App() {
 
     const groupSites = context.sites.filter((site) => {
       const isInGroup =
-        customerGroupFromTier(
+        resolveCustomerGroup(
           findLlmoEntitlement(context.entitlementsByOrg.get(site.organizationId) ?? [])?.tier,
+          site.id,
         ) === group;
 
       return (

@@ -1,3 +1,4 @@
+import { PAID_SITE_ID_ALLOWLIST } from '../data/paidSiteAllowlist';
 import {
   OPPORTUNITY_SOURCES,
   type CustomerGroup,
@@ -194,6 +195,20 @@ export const customerGroupFromTier = (tier: string | undefined): CustomerGroup =
   return 'free';
 };
 
+// Paid customers are restricted to the curated PAID_SITE_ID_ALLOWLIST — a
+// site with a live PAID entitlement that isn't on that list is bucketed
+// under Trial instead of Paid (not hidden). Only affects the 'paid' case;
+// trial/free classification from the entitlement tier is unchanged.
+export const resolveCustomerGroup = (tier: string | undefined, siteId: string): CustomerGroup => {
+  const rawGroup = customerGroupFromTier(tier);
+
+  if (rawGroup === 'paid' && !PAID_SITE_ID_ALLOWLIST.has(siteId)) {
+    return 'trial';
+  }
+
+  return rawGroup;
+};
+
 export const buildSiteRow = ({
   site,
   opportunities,
@@ -223,7 +238,7 @@ export const buildSiteRow = ({
     siteName: site.name || site.baseURL,
     baseURL: site.baseURL,
     organizationId: site.organizationId,
-    customerGroup: customerGroupFromTier(entitlementTier),
+    customerGroup: resolveCustomerGroup(entitlementTier, site.id),
     entitlementTier,
     indicators,
     opportunityIds,

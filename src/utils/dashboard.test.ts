@@ -10,8 +10,13 @@ import {
   toCsv,
 } from './dashboard';
 
+// A real site ID from PAID_SITE_ID_ALLOWLIST (src/data/paidSiteAllowlist.ts)
+// so buildSiteRow's PAID-tier tests actually land in the 'paid' group rather
+// than being demoted to 'trial' as an unlisted site would be.
+const ALLOWLISTED_SITE_ID = '5d50aa04-f1cf-42be-83f8-555524b9ae28';
+
 const site = {
-  id: 'site-1',
+  id: ALLOWLISTED_SITE_ID,
   baseURL: 'https://example.com',
   name: 'Example',
   organizationId: 'org-1',
@@ -25,7 +30,7 @@ const opportunity = (
   dates: { createdAt?: string; updatedAt?: string } = {},
 ): SpacecatOpportunity => ({
   id,
-  siteId: 'site-1',
+  siteId: ALLOWLISTED_SITE_ID,
   type,
   status,
   ...dates,
@@ -170,7 +175,9 @@ describe('dashboard transforms', () => {
       buildSiteRow({
         site: {
           ...site,
-          id: 'site-6',
+          // A second real allowlisted ID (accesscorp.com) — must differ from
+          // ALLOWLISTED_SITE_ID so this row isn't just a duplicate.
+          id: '019e9871-8ee8-7856-803d-348f9324cf7f',
           baseURL: 'https://customer.example.com',
           name: 'Customer',
         },
