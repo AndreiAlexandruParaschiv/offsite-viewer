@@ -1,4 +1,10 @@
-import type { SpacecatEntitlement, SpacecatOpportunity, SpacecatSite, SpacecatSuggestion } from '../types';
+import type {
+  SpacecatAudit,
+  SpacecatEntitlement,
+  SpacecatOpportunity,
+  SpacecatSite,
+  SpacecatSuggestion,
+} from '../types';
 
 interface SitesPagedResponse {
   sites: SpacecatSite[];
@@ -116,5 +122,22 @@ export class SpacecatClient {
       `/sites/${encodeURIComponent(siteId)}/opportunities/${encodeURIComponent(opportunityId)}`,
       { method: 'PATCH', body: { status } },
     );
+  }
+
+  // Verified live (2026-07-22) against a real paid site: returns 200 with a
+  // useful auditResult.success/error for every source type, not just a 404 —
+  // unlike offsite-brand-presence, this is a reliable per-site signal.
+  async getLatestAudit(siteId: string, auditType: string): Promise<SpacecatAudit | null> {
+    try {
+      return await this.request<SpacecatAudit>(
+        `/sites/${encodeURIComponent(siteId)}/latest-audit/${encodeURIComponent(auditType)}`,
+      );
+    } catch (error) {
+      if (error instanceof Error && /^404\b/.test(error.message)) {
+        return null;
+      }
+
+      throw error;
+    }
   }
 }

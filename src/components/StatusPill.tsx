@@ -1,4 +1,4 @@
-import type { OpportunityIndicator } from '../types';
+import type { MissingOpportunityInfo, OpportunityIndicator } from '../types';
 
 const LABELS: Record<OpportunityIndicator, string> = {
   visible: 'yes',
@@ -19,14 +19,22 @@ interface StatusPillProps {
   status: OpportunityIndicator;
   date?: string;
   suggestionCount?: number;
+  missingInfo?: MissingOpportunityInfo;
 }
 
-export function StatusPill({ status, date, suggestionCount }: StatusPillProps) {
+export function StatusPill({ status, date, suggestionCount, missingInfo }: StatusPillProps) {
   const showExtras = status === 'visible' || status === 'ignored';
   const formattedDate = showExtras && date ? formatDate(date) : '';
   // suggestionCount is absent (not 0) when it hasn't been fetched for this
   // row, so only render it once it's actually known.
   const hasSuggestionCount = showExtras && suggestionCount !== undefined;
+
+  const missingLabel =
+    status === 'missing' && missingInfo
+      ? missingInfo.kind === 'audit-error'
+        ? 'audit failed'
+        : 'audit ran, no opportunity'
+      : '';
 
   return (
     <span className="status-cell">
@@ -38,6 +46,14 @@ export function StatusPill({ status, date, suggestionCount }: StatusPillProps) {
       {hasSuggestionCount ? (
         <span className="status-cell__suggestions">
           {suggestionCount} suggestion{suggestionCount === 1 ? '' : 's'}
+        </span>
+      ) : null}
+      {missingLabel ? (
+        <span
+          className={`status-cell__reason status-cell__reason--${missingInfo?.kind}`}
+          title={missingInfo?.detail}
+        >
+          {missingLabel}
         </span>
       ) : null}
     </span>

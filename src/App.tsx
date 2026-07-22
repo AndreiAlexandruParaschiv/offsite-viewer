@@ -8,6 +8,7 @@ import {
   type CustomerGroup,
   type DashboardDataset,
   type FetchStatus,
+  type MissingOpportunityInfo,
   type OpportunityIndicator,
   type SiteOpportunityRow,
   type SourceKey,
@@ -17,6 +18,7 @@ import {
 import { mapWithConcurrency } from './utils/concurrency';
 import {
   buildSiteRow,
+  explainMissingOpportunity,
   findLlmoEntitlement,
   formatIsoWeek,
   getOverviewCounts,
@@ -87,6 +89,39 @@ const fetchSuggestionCounts = async (
   return counts;
 };
 
+// One extra API call per missing source — each source's own latest audit
+// (GET /sites/{siteId}/latest-audit/{opportunityType}) explains whether it
+// genuinely failed vs ran fine with nothing to report. Failures are left
+// absent from the result rather than surfaced, same reasoning as suggestion
+// counts.
+const fetchMissingInfo = async (
+  client: SpacecatClient,
+  siteId: string,
+  row: SiteOpportunityRow,
+): Promise<Partial<Record<SourceKey, MissingOpportunityInfo>>> => {
+  const info: Partial<Record<SourceKey, MissingOpportunityInfo>> = {};
+
+  await Promise.all(
+    sourceKeysList.map(async (sourceKey) => {
+      if (row.indicators[sourceKey] !== 'missing') {
+        return;
+      }
+
+      try {
+        const audit = await client.getLatestAudit(siteId, OPPORTUNITY_SOURCES[sourceKey].opportunityType);
+        const explanation = explainMissingOpportunity(row.indicators[sourceKey], audit);
+        if (explanation) {
+          info[sourceKey] = explanation;
+        }
+      } catch {
+        // leave this source absent from info on failure
+      }
+    }),
+  );
+
+  return info;
+};
+
 const fetchRow = async (
   client: SpacecatClient,
   site: SpacecatSite,
@@ -108,7 +143,12 @@ const fetchRow = async (
   }
 
   if (includePaidExtras) {
-    row.suggestionCounts = await fetchSuggestionCounts(client, site.id, row);
+    const [suggestionCounts, missingInfo] = await Promise.all([
+      fetchSuggestionCounts(client, site.id, row),
+      fetchMissingInfo(client, site.id, row),
+    ]);
+    row.suggestionCounts = suggestionCounts;
+    row.missingInfo = missingInfo;
   }
 
   return row;

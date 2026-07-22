@@ -73,6 +73,29 @@ export interface SpacecatSuggestion {
   [key: string]: unknown;
 }
 
+// GET /sites/{siteId}/latest-audit/{auditType} — the audit that produces (or
+// fails to produce) a source's opportunity. auditResult.success distinguishes
+// a real audit failure from "ran fine, nothing to report".
+export interface SpacecatAuditResult {
+  success: boolean;
+  error?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+export interface SpacecatAudit {
+  auditType: string;
+  auditedAt?: string;
+  auditResult?: SpacecatAuditResult;
+  [key: string]: unknown;
+}
+
+export interface MissingOpportunityInfo {
+  kind: 'audit-error' | 'no-opportunity';
+  detail?: string;
+  auditedAt?: string;
+}
+
 export interface SiteOpportunityRow {
   siteId: string;
   siteName: string;
@@ -87,6 +110,9 @@ export interface SiteOpportunityRow {
   // opportunity) and only populated for rows this was requested for — absent
   // (not zero) means "not fetched", not "zero suggestions".
   suggestionCounts?: Partial<Record<SourceKey, number>>;
+  // Why a "missing" source is missing, fetched per-source (one extra call per
+  // missing source) and only populated for rows this was requested for.
+  missingInfo?: Partial<Record<SourceKey, MissingOpportunityInfo>>;
   loadError?: string;
 }
 

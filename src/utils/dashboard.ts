@@ -3,9 +3,11 @@ import {
   OPPORTUNITY_SOURCES,
   type CustomerGroup,
   type DashboardDataset,
+  type MissingOpportunityInfo,
   type OpportunityIndicator,
   type SiteOpportunityRow,
   type SourceKey,
+  type SpacecatAudit,
   type SpacecatEntitlement,
   type SpacecatOpportunity,
   type SpacecatSite,
@@ -193,6 +195,30 @@ export const indicatorFromOpportunities = (
   }
 
   return { indicator: 'missing', opportunityId: '', date: '' };
+};
+
+// Explains a "missing" source using its own latest audit (GET
+// /sites/{siteId}/latest-audit/{auditType}, same auditType as
+// OPPORTUNITY_SOURCES[key].opportunityType): 'audit-error' when the audit
+// itself failed (auditResult.success === false, with its own error message);
+// 'no-opportunity' when the audit ran fine but produced no opportunity —
+// opportunity creation happens asynchronously via Mystique after a
+// successful audit, so this is a normal, non-failure outcome, not a bug.
+// Returns undefined when the source isn't "missing" or no audit record
+// exists at all (never run).
+export const explainMissingOpportunity = (
+  indicator: OpportunityIndicator,
+  audit: SpacecatAudit | null,
+): MissingOpportunityInfo | undefined => {
+  if (indicator !== 'missing' || !audit?.auditResult) {
+    return undefined;
+  }
+
+  if (audit.auditResult.success === false) {
+    return { kind: 'audit-error', detail: audit.auditResult.error, auditedAt: audit.auditedAt };
+  }
+
+  return { kind: 'no-opportunity', auditedAt: audit.auditedAt };
 };
 
 export const findLlmoEntitlement = (entitlements: SpacecatEntitlement[]) => {
