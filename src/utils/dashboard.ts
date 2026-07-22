@@ -130,21 +130,16 @@ export const isInternalTestCustomer = (identity: {
   );
 };
 
-export const resolveOpportunityDate = (opportunities: SpacecatOpportunity[]): string => {
-  if (opportunities.length === 0) {
-    return '';
-  }
-
-  if (opportunities.length === 1) {
-    const [only] = opportunities;
-    return only.createdAt ?? only.updatedAt ?? '';
-  }
-
-  return opportunities.reduce((latest, opportunity) => {
+// Always the latest time the opportunity was touched — prefer updatedAt over
+// createdAt, and across multiple opportunities of a type take the most recent.
+// An opportunity can be created once (e.g. Mar 4) and then re-updated by every
+// later audit run (e.g. Jul 22); the run date is what's meaningful here, so a
+// stale createdAt must never win over a newer updatedAt.
+export const resolveOpportunityDate = (opportunities: SpacecatOpportunity[]): string =>
+  opportunities.reduce((latest, opportunity) => {
     const timestamp = opportunity.updatedAt ?? opportunity.createdAt ?? '';
     return timestamp > latest ? timestamp : latest;
   }, '');
-};
 
 export const indicatorFromOpportunities = (
   opportunities: SpacecatOpportunity[],

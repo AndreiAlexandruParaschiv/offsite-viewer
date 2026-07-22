@@ -68,7 +68,7 @@ describe('dashboard transforms', () => {
     ).toEqual({ indicator: 'ignored', opportunityId: 'youtube-analysis-IGNORED', date: '' });
   });
 
-  it('uses the creation date when a source has a single opportunity', () => {
+  it('uses the latest update date, not the creation date, for a single opportunity', () => {
     expect(
       indicatorFromOpportunities(
         [
@@ -82,7 +82,7 @@ describe('dashboard transforms', () => {
     ).toEqual({
       indicator: 'visible',
       opportunityId: 'cited-only',
-      date: '2026-06-01T00:00:00.000Z',
+      date: '2026-06-20T00:00:00.000Z',
     });
   });
 
