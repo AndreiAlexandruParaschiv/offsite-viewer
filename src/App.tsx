@@ -155,6 +155,31 @@ const fetchRow = async (
   return row;
 };
 
+// Publishing the dataset re-sorts every row (localeCompare) and re-renders the
+// full, non-virtualized tables. Doing that on every single site completion is
+// O(n^2) sorting plus n table reconciliations, which on large accounts (12k+
+// sites) thrashes memory hard enough to crash the tab ("Aw, Snap!"). Throttle
+// to at most one publish per interval so the UI still fills in live, with a
+// forced final flush so the last rows always land.
+const createDatasetPublisher = (
+  rowsById: Map<string, SiteOpportunityRow>,
+  publish: (dataset: DashboardDataset) => void,
+  intervalMs = 500,
+) => {
+  let lastPublish = 0;
+
+  return (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastPublish < intervalMs) {
+      return;
+    }
+
+    lastPublish = now;
+    const sortedRows = [...rowsById.values()].sort((a, b) => a.siteName.localeCompare(b.siteName));
+    publish({ rows: sortedRows, generatedAt: new Date().toISOString() });
+  };
+};
+
 const downloadCsv = (dataset: DashboardDataset, filenamePrefix: string) => {
   const csv = toCsv(dataset);
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -265,12 +290,7 @@ function App() {
       setProgress(`Loading opportunities for ${orderedSites.length} LLMO sites`);
 
       const rowsById = new Map<string, SiteOpportunityRow>();
-      const publishDataset = () => {
-        const sortedRows = [...rowsById.values()].sort((a, b) =>
-          a.siteName.localeCompare(b.siteName),
-        );
-        setDataset({ rows: sortedRows, generatedAt: new Date().toISOString() });
-      };
+      const publishDataset = createDatasetPublisher(rowsById, setDataset);
 
       await mapWithConcurrency(orderedSites, OPPORTUNITY_FETCH_CONCURRENCY, async (site, index) => {
         const percent = Math.round(((index + 1) / orderedSites.length) * 100);
@@ -290,6 +310,7 @@ function App() {
         publishDataset();
       });
 
+      publishDataset(true);
       setStatus('success');
       setProgress(`Loaded ${rowsById.size} LLMO sites`);
     } catch (loadError) {
@@ -333,10 +354,7 @@ function App() {
     setProgress(`Refreshing ${groupSites.length} ${group} sites`);
 
     const rowsById = new Map(dataset.rows.map((row) => [row.siteId, row]));
-    const publishDataset = () => {
-      const sortedRows = [...rowsById.values()].sort((a, b) => a.siteName.localeCompare(b.siteName));
-      setDataset({ rows: sortedRows, generatedAt: new Date().toISOString() });
-    };
+    const publishDataset = createDatasetPublisher(rowsById, setDataset);
 
     try {
       await mapWithConcurrency(groupSites, OPPORTUNITY_FETCH_CONCURRENCY, async (site, index) => {
@@ -352,6 +370,7 @@ function App() {
         publishDataset();
       });
 
+      publishDataset(true);
       setStatus('success');
       setProgress(`Refreshed ${groupSites.length} ${group} sites`);
     } catch (refreshError) {
