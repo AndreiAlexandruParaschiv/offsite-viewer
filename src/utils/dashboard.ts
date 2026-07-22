@@ -148,18 +148,31 @@ export const indicatorFromOpportunities = (
   opportunityType: string,
 ): { indicator: OpportunityIndicator; opportunityId: string; date: string } => {
   const matching = opportunities.filter((opportunity) => opportunity.type === opportunityType);
-  const visible = matching.find((opportunity) => normalizeOpportunityStatus(opportunity.status) === 'NEW');
 
-  if (visible) {
-    return { indicator: 'visible', opportunityId: visible.id, date: resolveOpportunityDate(matching) };
+  if (matching.length === 0) {
+    return { indicator: 'missing', opportunityId: '', date: '' };
   }
 
-  const ignored = matching.find(
-    (opportunity) => normalizeOpportunityStatus(opportunity.status) === 'IGNORED',
-  );
+  // Multiple opportunities of the same type can coexist across separate
+  // audit runs (e.g. a Jul 20 run left NEW, a Jul 22 run marked IGNORED) — the
+  // most recently updated/created one determines the displayed status, so an
+  // older NEW can no longer outrank a newer IGNORED (or vice versa) just
+  // because it happened to be found first.
+  const latest = matching.reduce((current, opportunity) => {
+    const currentTimestamp = current.updatedAt ?? current.createdAt ?? '';
+    const candidateTimestamp = opportunity.updatedAt ?? opportunity.createdAt ?? '';
+    return candidateTimestamp > currentTimestamp ? opportunity : current;
+  });
 
-  if (ignored) {
-    return { indicator: 'ignored', opportunityId: ignored.id, date: resolveOpportunityDate(matching) };
+  const status = normalizeOpportunityStatus(latest.status);
+  const date = resolveOpportunityDate(matching);
+
+  if (status === 'NEW') {
+    return { indicator: 'visible', opportunityId: latest.id, date };
+  }
+
+  if (status === 'IGNORED') {
+    return { indicator: 'ignored', opportunityId: latest.id, date };
   }
 
   return { indicator: 'missing', opportunityId: '', date: '' };
