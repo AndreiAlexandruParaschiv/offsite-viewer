@@ -58,6 +58,7 @@ const INTERNAL_TEST_CUSTOMERS = new Set([
   'https://playwright-503-repro.com',
   'https://xyz.com',
   'https://departmentof.com',
+  'https://abhishek.com',
 ]);
 
 // Sites that are SSRF / DNS-rebinding security probes, not real onboarding
