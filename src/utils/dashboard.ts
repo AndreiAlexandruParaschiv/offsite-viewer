@@ -161,7 +161,24 @@ export const indicatorFromOpportunities = (
   const latest = matching.reduce((current, opportunity) => {
     const currentTimestamp = current.updatedAt ?? current.createdAt ?? '';
     const candidateTimestamp = opportunity.updatedAt ?? opportunity.createdAt ?? '';
-    return candidateTimestamp > currentTimestamp ? opportunity : current;
+
+    if (candidateTimestamp > currentTimestamp) {
+      return opportunity;
+    }
+
+    // On an exact timestamp tie, prefer IGNORED over any other status —
+    // something can't logically be ignored before (or at the same instant)
+    // it's created as NEW, so a tied IGNORED is the more authoritative/final
+    // state rather than an arbitrary array-order pick.
+    if (
+      candidateTimestamp === currentTimestamp &&
+      normalizeOpportunityStatus(opportunity.status) === 'IGNORED' &&
+      normalizeOpportunityStatus(current.status) !== 'IGNORED'
+    ) {
+      return opportunity;
+    }
+
+    return current;
   });
 
   const status = normalizeOpportunityStatus(latest.status);
