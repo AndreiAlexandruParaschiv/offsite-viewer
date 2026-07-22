@@ -28,8 +28,8 @@ export const spacecatAuditCommand = (baseURL: string): string => {
 };
 
 const LLMO_PRODUCT_HINTS = ['llmo', 'LLMO', 'ai-visibility', 'AI_VISIBILITY', 'llm_optimizer', 'LLM_OPTIMIZER'];
-// Internal/test/dev-preview sites and onboarding-flow probes that shouldn't
-// show up as real customers, in either the paid or trial tables.
+// Internal/test/dev-preview sites that shouldn't show up as real customers,
+// in either the paid or trial tables.
 const INTERNAL_TEST_CUSTOMERS = new Set([
   'llmo release notes',
   'https://test-tokowaka.testaemcloud.com',
@@ -53,21 +53,41 @@ const INTERNAL_TEST_CUSTOMERS = new Set([
   'https://testing.com',
   'https://testurl.com',
   'https://testuser.com',
-  'http://169-254-169-254.nip.io/latest/meta-data',
   'https://abcxyztest.com',
   'https://agldstqtrtest.digital.agl.com.au',
-  'https://t3xvtcra96mvq6dyrq06oyqw2n8ew7kw.oastify.com/path/working/test',
   'https://playwright-503-repro.com',
   'https://xyz.com',
   'https://departmentof.com',
-  'http://0532vjthbdo2sdf5tx2dq5s34ualyhm6.oastify.com',
-  'http://823da901.sslip.io',
-  'https://15e52187b74c53d6.d9fj7bnvm6m661e3',
+]);
+
+// Sites that are SSRF / DNS-rebinding security probes, not real onboarding
+// attempts — someone (or an automated scanner) testing whether the
+// site-onboarding flow can be tricked into fetching an attacker-controlled or
+// internal-network URL. Kept separate from INTERNAL_TEST_CUSTOMERS because
+// these represent a security concern worth escalating to whoever owns that
+// flow, not routine internal/dev noise. Three distinct techniques seen so
+// far:
+//   - nip.io / sslip.io: wildcard DNS services that resolve a subdomain
+//     encoding an IP address (e.g. "130-61-169-1.nip.io" -> 130.61.169.1) to
+//     that literal IP — used to make a "hostname" resolve to an internal or
+//     cloud-metadata address despite looking like an ordinary domain.
+//   - A bare link-local address (169.254.169.254) — the AWS/Azure/GCP cloud
+//     instance metadata endpoint, a classic SSRF target.
+//   - oastify.com and the interactsh-style domain below: out-of-band
+//     interaction services (Burp Suite Collaborator, Interactsh) that let a
+//     scanner detect a "blind" SSRF by checking whether the target server
+//     ever made an outbound request to a throwaway generated subdomain.
+const SECURITY_PROBE_SITES = new Set([
+  'http://169-254-169-254.nip.io/latest/meta-data',
   'https://169.254.169.254',
+  'http://823da901.sslip.io',
   'http://cachebuster1.130.61.169.1.nip.io',
   'http://cachebuster2-130-61-169-1.nip.io',
   'http://cachebuster3-823da901.nip.io',
   'http://cachebuster4-823da901.sslip.io',
+  'https://t3xvtcra96mvq6dyrq06oyqw2n8ew7kw.oastify.com/path/working/test',
+  'http://0532vjthbdo2sdf5tx2dq5s34ualyhm6.oastify.com',
+  'https://15e52187b74c53d6.d9fj7bnvm6m661e3',
 ]);
 
 // Whole orgs known to be internal/test accounts — every site under one of
@@ -92,10 +112,18 @@ export const isInternalTestCustomer = (identity: {
   siteName: string;
   baseURL: string;
   organizationId: string;
-}) =>
-  INTERNAL_TEST_CUSTOMERS.has(normalizeCustomerIdentity(identity.siteName)) ||
-  INTERNAL_TEST_CUSTOMERS.has(normalizeCustomerIdentity(identity.baseURL)) ||
-  INTERNAL_TEST_ORGANIZATIONS.has(identity.organizationId);
+}) => {
+  const siteName = normalizeCustomerIdentity(identity.siteName);
+  const baseURL = normalizeCustomerIdentity(identity.baseURL);
+
+  return (
+    INTERNAL_TEST_CUSTOMERS.has(siteName) ||
+    INTERNAL_TEST_CUSTOMERS.has(baseURL) ||
+    SECURITY_PROBE_SITES.has(siteName) ||
+    SECURITY_PROBE_SITES.has(baseURL) ||
+    INTERNAL_TEST_ORGANIZATIONS.has(identity.organizationId)
+  );
+};
 
 export const resolveOpportunityDate = (opportunities: SpacecatOpportunity[]): string => {
   if (opportunities.length === 0) {
