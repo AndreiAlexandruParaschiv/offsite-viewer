@@ -380,6 +380,14 @@ tbody tr:hover td {
   gap: 6px;
 }
 
+.site-cell__index {
+  flex: 0 0 auto;
+  color: #8a938a;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
 .site-cell strong {
   max-width: 340px;
   overflow: hidden;

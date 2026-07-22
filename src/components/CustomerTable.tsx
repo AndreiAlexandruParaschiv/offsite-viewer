@@ -235,11 +235,12 @@ export function CustomerTable({
                   </td>
                 </tr>
               ) : (
-                sortedRows.map((row) => (
+                sortedRows.map((row, index) => (
                   <tr key={row.siteId}>
                     <td>
                       <div className="site-cell">
                         <div className="site-cell__name-row">
+                          <span className="site-cell__index">{index + 1}</span>
                           <strong>{row.siteName}</strong>
                           {enableAuditCommand ? (
                             <button
