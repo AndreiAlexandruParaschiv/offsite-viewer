@@ -12,7 +12,7 @@ const formatDate = (value: string) => {
     return '';
   }
 
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(parsed);
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
 };
 
 interface StatusPillProps {
