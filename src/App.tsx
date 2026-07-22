@@ -23,6 +23,7 @@ import {
   formatIsoWeek,
   getAuditCoverage,
   getOverviewCounts,
+  getSourceInsights,
   groupRows,
   isInternalTestCustomer,
   isLlmoSite,
@@ -230,6 +231,9 @@ function App() {
     () => getOverviewCounts(groupedRows.trial),
     [groupedRows.trial],
   );
+  // Extra per-source insight (visible-with-suggestions, ignored) is Paid-scoped
+  // because suggestion counts are only fetched for Paid rows.
+  const paidSourceInsights = useMemo(() => getSourceInsights(groupedRows.paid), [groupedRows.paid]);
   // Audit-run coverage (did the underlying audit actually run?) is only ever
   // fetched for Paid rows — see fetchMissingInfo in fetchRow — so this is
   // scoped to Paid only, not visibleRows. Split by cadence (reddit/youtube/
@@ -501,6 +505,10 @@ function App() {
               <small>sites shown with yes</small>
               <small className="metric__breakdown">
                 Paid {paidOverviewCounts[sourceKey] ?? 0} &middot; Trial {trialOverviewCounts[sourceKey] ?? 0}
+              </small>
+              <small className="metric__detail">
+                Paid: {paidSourceInsights[sourceKey]?.visibleWithSuggestions ?? 0} visible w/ suggestions &middot;{' '}
+                {paidSourceInsights[sourceKey]?.ignored ?? 0} ignored
               </small>
             </div>
           ),

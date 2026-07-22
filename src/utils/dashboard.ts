@@ -368,6 +368,42 @@ export const getOverviewCounts = (rows: SiteOpportunityRow[]) =>
     {} as Record<SourceKey, number>,
   );
 
+export interface SourceInsight {
+  visible: number;
+  // Visible AND has at least one suggestion — the actionable subset.
+  // suggestionCounts is only fetched for Paid rows, so this is meaningful for
+  // Paid only; on rows without counts it reads as 0.
+  visibleWithSuggestions: number;
+  ignored: number;
+}
+
+// Per-source counts beyond the plain visible tally: how many visible
+// opportunities actually carry suggestions, and how many are ignored. Meant
+// to be run over a single group's rows (e.g. Paid).
+export const getSourceInsights = (
+  rows: SiteOpportunityRow[],
+): Record<SourceKey, SourceInsight> =>
+  sourceEntries.reduce((insights, [sourceKey]) => {
+    let visible = 0;
+    let visibleWithSuggestions = 0;
+    let ignored = 0;
+
+    rows.forEach((row) => {
+      const indicator = row.indicators[sourceKey];
+      if (indicator === 'visible') {
+        visible += 1;
+        if ((row.suggestionCounts?.[sourceKey] ?? 0) > 0) {
+          visibleWithSuggestions += 1;
+        }
+      } else if (indicator === 'ignored') {
+        ignored += 1;
+      }
+    });
+
+    insights[sourceKey] = { visible, visibleWithSuggestions, ignored };
+    return insights;
+  }, {} as Record<SourceKey, SourceInsight>);
+
 export const groupRows = (rows: SiteOpportunityRow[]) => ({
   paid: rows.filter((row) => row.customerGroup === 'paid' && !isInternalTestCustomer(row)),
   trial: rows.filter((row) => row.customerGroup === 'trial' && !isInternalTestCustomer(row)),

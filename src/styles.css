@@ -185,6 +185,11 @@ input:focus {
   font-variant-numeric: tabular-nums;
 }
 
+.metric__detail {
+  color: #667063;
+  font-variant-numeric: tabular-nums;
+}
+
 .audit-coverage {
   display: flex;
   flex-wrap: wrap;
