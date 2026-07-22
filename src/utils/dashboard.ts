@@ -62,6 +62,12 @@ const INTERNAL_TEST_CUSTOMERS = new Set([
   'https://departmentof.com',
   'http://0532vjthbdo2sdf5tx2dq5s34ualyhm6.oastify.com',
   'http://823da901.sslip.io',
+  'https://15e52187b74c53d6.d9fj7bnvm6m661e3',
+  'https://169.254.169.254',
+  'http://cachebuster1.130.61.169.1.nip.io',
+  'http://cachebuster2-130-61-169-1.nip.io',
+  'http://cachebuster3-823da901.nip.io',
+  'http://cachebuster4-823da901.sslip.io',
 ]);
 
 // Whole orgs known to be internal/test accounts — every site under one of
