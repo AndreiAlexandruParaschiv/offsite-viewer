@@ -21,6 +21,7 @@ import {
   explainMissingOpportunity,
   findLlmoEntitlement,
   formatIsoWeek,
+  getAuditCoverage,
   getOverviewCounts,
   groupRows,
   isInternalTestCustomer,
@@ -204,6 +205,10 @@ function App() {
     () => getOverviewCounts(groupedRows.trial),
     [groupedRows.trial],
   );
+  // Audit-run coverage (did the underlying audit actually run?) is only ever
+  // fetched for Paid rows — see fetchMissingInfo in fetchRow — so this is
+  // scoped to Paid only, not visibleRows.
+  const paidAuditCoverage = useMemo(() => getAuditCoverage(groupedRows.paid), [groupedRows.paid]);
 
   const loadDashboard = async () => {
     setStatus('loading');
@@ -473,6 +478,27 @@ function App() {
           ),
         )}
       </section>
+
+      {paidAuditCoverage.totalSlots > 0 ? (
+        <section className="audit-coverage" aria-label="Paid audit run coverage">
+          <span className="audit-coverage__label">
+            Paid audit runs &mdash; {paidAuditCoverage.totalSlots} total (
+            {groupedRows.paid.length} sites &times; {Object.keys(OPPORTUNITY_SOURCES).length} sources)
+          </span>
+          <span className="audit-coverage__stat">
+            {paidAuditCoverage.ranWithOpportunity} ran &rarr; opportunity created
+          </span>
+          <span className="audit-coverage__stat audit-coverage__stat--error">
+            {paidAuditCoverage.ranErrored} ran &rarr; errored out
+          </span>
+          <span className="audit-coverage__stat">
+            {paidAuditCoverage.ranNoOpportunity} ran &rarr; no opportunity created
+          </span>
+          <span className="audit-coverage__stat audit-coverage__stat--unknown">
+            {paidAuditCoverage.neverRanOrUnknown} never ran / unknown
+          </span>
+        </section>
+      ) : null}
 
       <section className="load-state" aria-live="polite">
         <span className={`load-state__dot load-state__dot--${status}`} />

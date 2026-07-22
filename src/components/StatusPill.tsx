@@ -32,9 +32,10 @@ export function StatusPill({ status, date, suggestionCount, missingInfo }: Statu
   const missingLabel =
     status === 'missing' && missingInfo
       ? missingInfo.kind === 'audit-error'
-        ? 'audit failed'
-        : 'audit ran, no opportunity'
+        ? 'audit ran - errored out'
+        : 'audit ran - no oppty created'
       : '';
+  const missingAuditedAt = missingInfo?.auditedAt ? formatDate(missingInfo.auditedAt) : '';
 
   return (
     <span className="status-cell">
@@ -56,6 +57,7 @@ export function StatusPill({ status, date, suggestionCount, missingInfo }: Statu
           {missingLabel}
         </span>
       ) : null}
+      {missingAuditedAt ? <span className="status-cell__date">{missingAuditedAt}</span> : null}
     </span>
   );
 }

@@ -185,6 +185,34 @@ input:focus {
   font-variant-numeric: tabular-nums;
 }
 
+.audit-coverage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  align-items: center;
+  margin: 0 0 14px;
+  color: #4e5a50;
+  font-size: 0.82rem;
+}
+
+.audit-coverage__label {
+  color: #566356;
+  font-weight: 800;
+}
+
+.audit-coverage__stat {
+  font-variant-numeric: tabular-nums;
+}
+
+.audit-coverage__stat--error {
+  color: #9d261f;
+  font-weight: 700;
+}
+
+.audit-coverage__stat--unknown {
+  color: #8a938a;
+}
+
 .load-state {
   display: flex;
   align-items: center;

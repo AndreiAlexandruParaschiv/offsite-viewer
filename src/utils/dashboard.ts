@@ -303,6 +303,60 @@ export const buildSiteRow = ({
   };
 };
 
+export interface AuditCoverage {
+  totalSlots: number;
+  // visible/ignored means an opportunity exists, which is only possible if
+  // the underlying audit ran and succeeded — no separate audit check needed.
+  ranWithOpportunity: number;
+  // "missing" sources only: broken down by what their own latest-audit
+  // record (fetched via fetchMissingInfo, paid rows only) actually says.
+  ranErrored: number;
+  ranNoOpportunity: number;
+  // "missing" with no audit record at all, or missingInfo was never fetched
+  // for this row (e.g. a trial/free row, where it's paid-only) — can't tell
+  // "genuinely never ran" apart from "not checked" from the data available.
+  neverRanOrUnknown: number;
+}
+
+// Answers "did every audit actually run?" across a set of rows. Only
+// meaningful for rows whose missingInfo has actually been fetched (paid
+// rows) — trial/free rows always fall into neverRanOrUnknown since that
+// check is paid-only.
+export const getAuditCoverage = (rows: SiteOpportunityRow[]): AuditCoverage => {
+  let ranWithOpportunity = 0;
+  let ranErrored = 0;
+  let ranNoOpportunity = 0;
+  let neverRanOrUnknown = 0;
+
+  rows.forEach((row) => {
+    sourceEntries.forEach(([sourceKey]) => {
+      const indicator = row.indicators[sourceKey];
+
+      if (indicator === 'visible' || indicator === 'ignored') {
+        ranWithOpportunity += 1;
+        return;
+      }
+
+      const info = row.missingInfo?.[sourceKey];
+      if (info?.kind === 'audit-error') {
+        ranErrored += 1;
+      } else if (info?.kind === 'no-opportunity') {
+        ranNoOpportunity += 1;
+      } else {
+        neverRanOrUnknown += 1;
+      }
+    });
+  });
+
+  return {
+    totalSlots: rows.length * sourceEntries.length,
+    ranWithOpportunity,
+    ranErrored,
+    ranNoOpportunity,
+    neverRanOrUnknown,
+  };
+};
+
 export const getOverviewCounts = (rows: SiteOpportunityRow[]) =>
   sourceEntries.reduce(
     (counts, [sourceKey]) => ({
