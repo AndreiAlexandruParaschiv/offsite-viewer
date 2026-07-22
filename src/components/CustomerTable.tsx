@@ -28,6 +28,8 @@ interface CustomerTableProps {
   onExport?: () => void;
   onRefresh?: () => void;
   refreshDisabled?: boolean;
+  refreshLabel?: string;
+  refreshTitle?: string;
   onToggleStatus?: (row: SiteOpportunityRow, sourceKey: SourceKey) => Promise<void>;
   // Shows a per-row "copy Slack audit command" button plus a header button to
   // copy all of them at once — the @spacecat bot's `run audit` command has no
@@ -59,6 +61,8 @@ export function CustomerTable({
   onExport,
   onRefresh,
   refreshDisabled = false,
+  refreshLabel = 'Refresh',
+  refreshTitle = 'Re-check opportunities for these sites only, without reloading everything',
   onToggleStatus,
   enableAuditCommand = false,
 }: CustomerTableProps) {
@@ -172,10 +176,10 @@ export function CustomerTable({
             className="customer-section__export"
             onClick={onRefresh}
             disabled={refreshDisabled}
-            title="Re-check opportunities for these sites only, without reloading everything"
+            title={refreshTitle}
           >
             <RefreshCw size={14} />
-            Refresh
+            {refreshLabel}
           </button>
         ) : null}
         {onExport ? (

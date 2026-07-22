@@ -34,14 +34,6 @@ import {
 const TOKEN_STORAGE_KEY = 'offsite-viewer.token';
 const BASE_URL_STORAGE_KEY = 'offsite-viewer.baseUrl';
 
-// Paid sites load first so the Paid customers table fills in before trial/free
-// sites (which can outnumber paid ones considerably) finish loading.
-const CUSTOMER_GROUP_LOAD_PRIORITY: Record<CustomerGroup, number> = {
-  paid: 0,
-  trial: 1,
-  free: 2,
-};
-
 // Entitlement lookups are one lightweight call per org (fewer orgs than
 // sites), so a higher concurrency is safe. Opportunity lookups return more
 // data per site; keep that pool smaller to avoid tripping API rate limits.
@@ -202,6 +194,9 @@ function App() {
   const [error, setError] = useState('');
   const [dataset, setDataset] = useState<DashboardDataset>({ rows: [], generatedAt: '' });
   const [hasLoadContext, setHasLoadContext] = useState(false);
+  // Trial isn't loaded on initial Load (see loadDashboard) — it's opt-in via
+  // its own button. Drives that button's label (Load vs Refresh).
+  const [trialLoaded, setTrialLoaded] = useState(false);
 
   // Snapshot from the last full Load, kept around so "Refresh paid
   // customers" can re-fetch just paid sites' opportunities without
@@ -285,30 +280,25 @@ function App() {
         ]),
       );
 
-      const orderedSites = [...llmoSites].sort(
-        (a, b) =>
-          CUSTOMER_GROUP_LOAD_PRIORITY[customerGroupBySite.get(a.id) ?? 'free'] -
-          CUSTOMER_GROUP_LOAD_PRIORITY[customerGroupBySite.get(b.id) ?? 'free'],
-      );
+      // Initial Load fetches Paid sites only. Trial (which can be thousands of
+      // rows) is loaded on demand via its own button — rendering that many
+      // rows at once is what pushes the tab into an "Aw, Snap!" crash.
+      setTrialLoaded(false);
+      const paidSites = llmoSites.filter((site) => customerGroupBySite.get(site.id) === 'paid');
 
-      setProgress(`Loading opportunities for ${orderedSites.length} LLMO sites`);
+      setProgress(`Loading opportunities for ${paidSites.length} paid sites`);
 
       const rowsById = new Map<string, SiteOpportunityRow>();
       const publishDataset = createDatasetPublisher(rowsById, setDataset);
 
-      await mapWithConcurrency(orderedSites, OPPORTUNITY_FETCH_CONCURRENCY, async (site, index) => {
-        const percent = Math.round(((index + 1) / orderedSites.length) * 100);
+      await mapWithConcurrency(paidSites, OPPORTUNITY_FETCH_CONCURRENCY, async (site, index) => {
+        const percent = Math.round(((index + 1) / paidSites.length) * 100);
         setProgress(
-          `Loading site ${index + 1} of ${orderedSites.length} (${percent}%): ${site.baseURL}`,
+          `Loading paid site ${index + 1} of ${paidSites.length} (${percent}%): ${site.baseURL}`,
         );
 
         const entitlements = entitlementsByOrg.get(site.organizationId) ?? [];
-        const row = await fetchRow(
-          client,
-          site,
-          entitlements,
-          customerGroupBySite.get(site.id) === 'paid',
-        );
+        const row = await fetchRow(client, site, entitlements, true);
 
         rowsById.set(row.siteId, row);
         publishDataset();
@@ -316,7 +306,7 @@ function App() {
 
       publishDataset(true);
       setStatus('success');
-      setProgress(`Loaded ${rowsById.size} LLMO sites`);
+      setProgress(`Loaded ${rowsById.size} paid sites — load Trial customers separately below`);
     } catch (loadError) {
       setStatus('error');
       setError(loadError instanceof Error ? loadError.message : 'Failed to load dashboard data');
@@ -375,6 +365,9 @@ function App() {
       });
 
       publishDataset(true);
+      if (group === 'trial') {
+        setTrialLoaded(true);
+      }
       setStatus('success');
       setProgress(`Refreshed ${groupSites.length} ${group} sites`);
     } catch (refreshError) {
@@ -440,7 +433,9 @@ function App() {
 
   const canLoad = status !== 'loading' && token.trim().length > 0 && baseUrl.trim().length > 0;
   const canRefreshPaid = status !== 'loading' && hasLoadContext && groupedRows.paid.length > 0;
-  const canRefreshTrial = status !== 'loading' && hasLoadContext && groupedRows.trial.length > 0;
+  // Trial can be loaded as soon as there's a load context — unlike paid it may
+  // have zero rows initially (it's not loaded on the initial Load).
+  const canRefreshTrial = status !== 'loading' && hasLoadContext;
   const canExport = visibleRows.length > 0;
 
   return (
@@ -579,9 +574,15 @@ function App() {
       <CustomerTable
         title="Trial customers"
         rows={groupedRows.trial}
-        defaultOpen
+        defaultOpen={false}
         onRefresh={() => refreshCustomerGroup('trial')}
         refreshDisabled={!canRefreshTrial}
+        refreshLabel={trialLoaded ? 'Refresh' : 'Load'}
+        refreshTitle={
+          trialLoaded
+            ? 'Re-check opportunities for trial sites'
+            : 'Load trial customers — not loaded on the initial Load to keep the tab light'
+        }
         onToggleStatus={toggleOpportunityStatus}
       />
     </main>
