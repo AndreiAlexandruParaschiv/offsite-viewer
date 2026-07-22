@@ -88,7 +88,7 @@ const SECURITY_PROBE_SITES = new Set([
   'http://cachebuster4-823da901.sslip.io',
   'https://t3xvtcra96mvq6dyrq06oyqw2n8ew7kw.oastify.com/path/working/test',
   'http://0532vjthbdo2sdf5tx2dq5s34ualyhm6.oastify.com',
-  'https://15e52187b74c53d6.d9fj7bnvm6m661e3',
+  'https://15e52187b74c53d6.d9fj7bnvm6m661e3pl90cbdru1s',
 ]);
 
 // Whole orgs known to be internal/test accounts — every site under one of
