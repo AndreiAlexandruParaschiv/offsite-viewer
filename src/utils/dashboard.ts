@@ -59,6 +59,7 @@ const INTERNAL_TEST_CUSTOMERS = new Set([
   'https://t3xvtcra96mvq6dyrq06oyqw2n8ew7kw.oastify.com/path/working/test',
   'https://playwright-503-repro.com',
   'https://xyz.com',
+  'https://departmentof.com',
 ]);
 
 // Whole orgs known to be internal/test accounts — every site under one of
