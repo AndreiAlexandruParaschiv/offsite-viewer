@@ -1,29 +1,38 @@
 export const API_DEFAULT_BASE_URL = 'https://llmo.experiencecloud.live/api/v1';
 
+// cadence is the audit's actual run schedule — reddit/youtube/cited run
+// weekly, wikipedia runs monthly. Mixing cadences together in an "audit
+// coverage" count skews it, since a monthly source will always look
+// under-run next to weekly ones over the same window.
 export const OPPORTUNITY_SOURCES = {
   reddit: {
     key: 'reddit',
     label: 'Reddit',
     opportunityType: 'reddit-analysis',
+    cadence: 'weekly',
   },
   youtube: {
     key: 'youtube',
     label: 'YouTube',
     opportunityType: 'youtube-analysis',
+    cadence: 'weekly',
   },
   cited: {
     key: 'cited',
     label: 'Cited',
     opportunityType: 'cited-analysis',
+    cadence: 'weekly',
   },
   wikipedia: {
     key: 'wikipedia',
     label: 'Wikipedia',
     opportunityType: 'wikipedia-analysis',
+    cadence: 'monthly',
   },
 } as const;
 
 export type SourceKey = keyof typeof OPPORTUNITY_SOURCES;
+export type SourceCadence = (typeof OPPORTUNITY_SOURCES)[SourceKey]['cadence'];
 
 export type OpportunityIndicator = 'visible' | 'ignored' | 'missing';
 

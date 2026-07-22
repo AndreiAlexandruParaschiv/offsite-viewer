@@ -6,6 +6,7 @@ import {
   type MissingOpportunityInfo,
   type OpportunityIndicator,
   type SiteOpportunityRow,
+  type SourceCadence,
   type SourceKey,
   type SpacecatAudit,
   type SpacecatEntitlement,
@@ -322,14 +323,20 @@ export interface AuditCoverage {
 // meaningful for rows whose missingInfo has actually been fetched (paid
 // rows) — trial/free rows always fall into neverRanOrUnknown since that
 // check is paid-only.
-export const getAuditCoverage = (rows: SiteOpportunityRow[]): AuditCoverage => {
+//
+// An optional cadence restricts which sources count — e.g. 'weekly' scopes
+// to reddit/youtube/cited only, since mixing in monthly wikipedia runs would
+// skew a "did this week's audits run" question.
+export const getAuditCoverage = (rows: SiteOpportunityRow[], cadence?: SourceCadence): AuditCoverage => {
+  const entries = cadence ? sourceEntries.filter(([, source]) => source.cadence === cadence) : sourceEntries;
+
   let ranWithOpportunity = 0;
   let ranErrored = 0;
   let ranNoOpportunity = 0;
   let neverRanOrUnknown = 0;
 
   rows.forEach((row) => {
-    sourceEntries.forEach(([sourceKey]) => {
+    entries.forEach(([sourceKey]) => {
       const indicator = row.indicators[sourceKey];
 
       if (indicator === 'visible' || indicator === 'ignored') {
@@ -349,7 +356,7 @@ export const getAuditCoverage = (rows: SiteOpportunityRow[]): AuditCoverage => {
   });
 
   return {
-    totalSlots: rows.length * sourceEntries.length,
+    totalSlots: rows.length * entries.length,
     ranWithOpportunity,
     ranErrored,
     ranNoOpportunity,

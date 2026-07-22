@@ -207,8 +207,17 @@ function App() {
   );
   // Audit-run coverage (did the underlying audit actually run?) is only ever
   // fetched for Paid rows — see fetchMissingInfo in fetchRow — so this is
-  // scoped to Paid only, not visibleRows.
-  const paidAuditCoverage = useMemo(() => getAuditCoverage(groupedRows.paid), [groupedRows.paid]);
+  // scoped to Paid only, not visibleRows. Split by cadence (reddit/youtube/
+  // cited run weekly, wikipedia runs monthly) so the two aren't averaged
+  // together into one misleading number.
+  const paidWeeklyAuditCoverage = useMemo(
+    () => getAuditCoverage(groupedRows.paid, 'weekly'),
+    [groupedRows.paid],
+  );
+  const paidMonthlyAuditCoverage = useMemo(
+    () => getAuditCoverage(groupedRows.paid, 'monthly'),
+    [groupedRows.paid],
+  );
 
   const loadDashboard = async () => {
     setStatus('loading');
@@ -479,23 +488,44 @@ function App() {
         )}
       </section>
 
-      {paidAuditCoverage.totalSlots > 0 ? (
-        <section className="audit-coverage" aria-label="Paid audit run coverage">
+      {paidWeeklyAuditCoverage.totalSlots > 0 ? (
+        <section className="audit-coverage" aria-label="Paid weekly audit run coverage">
           <span className="audit-coverage__label">
-            Paid audit runs &mdash; {paidAuditCoverage.totalSlots} total (
-            {groupedRows.paid.length} sites &times; {Object.keys(OPPORTUNITY_SOURCES).length} sources)
+            Paid weekly audit runs (Reddit/YouTube/Cited) &mdash; {paidWeeklyAuditCoverage.totalSlots} total (
+            {groupedRows.paid.length} sites &times; 3 sources)
           </span>
           <span className="audit-coverage__stat">
-            {paidAuditCoverage.ranWithOpportunity} ran &rarr; opportunity created
+            {paidWeeklyAuditCoverage.ranWithOpportunity} ran &rarr; opportunity created
           </span>
           <span className="audit-coverage__stat audit-coverage__stat--error">
-            {paidAuditCoverage.ranErrored} ran &rarr; errored out
+            {paidWeeklyAuditCoverage.ranErrored} ran &rarr; errored out
           </span>
           <span className="audit-coverage__stat">
-            {paidAuditCoverage.ranNoOpportunity} ran &rarr; no opportunity created
+            {paidWeeklyAuditCoverage.ranNoOpportunity} ran &rarr; no opportunity created
           </span>
           <span className="audit-coverage__stat audit-coverage__stat--unknown">
-            {paidAuditCoverage.neverRanOrUnknown} never ran / unknown
+            {paidWeeklyAuditCoverage.neverRanOrUnknown} never ran / unknown
+          </span>
+        </section>
+      ) : null}
+
+      {paidMonthlyAuditCoverage.totalSlots > 0 ? (
+        <section className="audit-coverage" aria-label="Paid monthly audit run coverage">
+          <span className="audit-coverage__label">
+            Paid monthly audit runs (Wikipedia) &mdash; {paidMonthlyAuditCoverage.totalSlots} total (
+            {groupedRows.paid.length} sites &times; 1 source)
+          </span>
+          <span className="audit-coverage__stat">
+            {paidMonthlyAuditCoverage.ranWithOpportunity} ran &rarr; opportunity created
+          </span>
+          <span className="audit-coverage__stat audit-coverage__stat--error">
+            {paidMonthlyAuditCoverage.ranErrored} ran &rarr; errored out
+          </span>
+          <span className="audit-coverage__stat">
+            {paidMonthlyAuditCoverage.ranNoOpportunity} ran &rarr; no opportunity created
+          </span>
+          <span className="audit-coverage__stat audit-coverage__stat--unknown">
+            {paidMonthlyAuditCoverage.neverRanOrUnknown} never ran / unknown
           </span>
         </section>
       ) : null}
