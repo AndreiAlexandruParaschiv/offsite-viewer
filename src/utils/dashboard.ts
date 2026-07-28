@@ -142,14 +142,21 @@ export const resolveOpportunityDate = (opportunities: SpacecatOpportunity[]): st
     return timestamp > latest ? timestamp : latest;
   }, '');
 
-// Pulls the LLM-usage block off an opportunity, defensively: mystique stamps
-// it top-level (opportunity.llmUsage), but in case the API surfaces it nested
-// under data we check there too. Returns undefined unless all three fields are
+// Pulls the LLM-usage block off an opportunity. The live LLMO API nests it at
+// data.fullAnalysis.opportunity.llmUsage — mystique stamps it onto the BO
+// JSON's opportunity, which Spacecat stores under data.fullAnalysis (verified
+// against real reddit/youtube/cited opportunities, 2026-07-28; wikipedia has
+// none). The top-level / data.llmUsage reads are kept as harmless fallbacks in
+// case the shape ever flattens. Returns undefined unless all three fields are
 // present and finite, so a partial/garbage payload never renders as bogus
 // zeros.
 export const extractLlmUsage = (opportunity: SpacecatOpportunity): LlmUsage | undefined => {
   const data = opportunity.data as Record<string, unknown> | undefined;
-  const candidate = (opportunity.llmUsage ?? data?.llmUsage) as Partial<LlmUsage> | undefined;
+  const fullAnalysisOpportunity = (data?.fullAnalysis as { opportunity?: unknown } | undefined)
+    ?.opportunity as Record<string, unknown> | undefined;
+  const candidate = (opportunity.llmUsage ??
+    data?.llmUsage ??
+    fullAnalysisOpportunity?.llmUsage) as Partial<LlmUsage> | undefined;
   if (!candidate) {
     return undefined;
   }
