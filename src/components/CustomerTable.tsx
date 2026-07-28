@@ -18,7 +18,7 @@ import {
   type SiteOpportunityRow,
   type SourceKey,
 } from '../types';
-import { spacecatAuditCommand } from '../utils/dashboard';
+import { formatCount, formatUsd, spacecatAuditCommand, sumRowLlmUsage } from '../utils/dashboard';
 import { StatusPill } from './StatusPill';
 
 interface CustomerTableProps {
@@ -41,8 +41,12 @@ interface CustomerTableProps {
 
 const sourceKeys = Object.keys(OPPORTUNITY_SOURCES) as Array<keyof typeof OPPORTUNITY_SOURCES>;
 
-type SortColumn = 'site' | (typeof sourceKeys)[number] | 'tier';
+type SortColumn = 'site' | (typeof sourceKeys)[number] | 'llmcost' | 'tier';
 type SortDirection = 'asc' | 'desc';
+
+// Human-readable tooltip for a usage block, e.g. "10 calls · 326,070 tokens · $1.468751".
+const usageTooltip = (usage: { totalLlmCalls: number; totalTokens: number; totalCostUsd: number }) =>
+  `${formatCount(usage.totalLlmCalls)} calls · ${formatCount(usage.totalTokens)} tokens · $${usage.totalCostUsd}`;
 
 // yes (visible) before ignored before no (missing), so sorting a source
 // column groups matching statuses together.
@@ -136,6 +140,10 @@ export function CustomerTable({
         return factor * a.entitlementTier.localeCompare(b.entitlementTier);
       }
 
+      if (sort.column === 'llmcost') {
+        return factor * (sumRowLlmUsage(a).totalCostUsd - sumRowLlmUsage(b).totalCostUsd);
+      }
+
       const indicatorDiff =
         INDICATOR_ORDER[a.indicators[sort.column]] - INDICATOR_ORDER[b.indicators[sort.column]];
       if (indicatorDiff !== 0) {
@@ -225,6 +233,11 @@ export function CustomerTable({
                   </th>
                 ))}
                 <th>
+                  <button type="button" className="th-sort" onClick={() => toggleSort('llmcost')}>
+                    LLM cost {sortIndicator('llmcost')}
+                  </button>
+                </th>
+                <th>
                   <button type="button" className="th-sort" onClick={() => toggleSort('tier')}>
                     Tier {sortIndicator('tier')}
                   </button>
@@ -234,7 +247,7 @@ export function CustomerTable({
             <tbody>
               {sortedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="empty-cell">
+                  <td colSpan={7} className="empty-cell">
                     No sites in this group.
                   </td>
                 </tr>
@@ -271,6 +284,7 @@ export function CustomerTable({
                       const status = row.indicators[sourceKey];
                       const toggleKey = `${row.siteId}:${sourceKey}`;
                       const isPending = pendingToggle === toggleKey;
+                      const usage = row.llmUsage?.[sourceKey];
 
                       return (
                         <td key={sourceKey}>
@@ -281,6 +295,11 @@ export function CustomerTable({
                               suggestionCount={row.suggestionCounts?.[sourceKey]}
                               missingInfo={row.missingInfo?.[sourceKey]}
                             />
+                            {usage ? (
+                              <span className="status-cell__cost" title={usageTooltip(usage)}>
+                                {formatUsd(usage.totalCostUsd)}
+                              </span>
+                            ) : null}
                             {onToggleStatus && status !== 'missing' ? (
                               <button
                                 type="button"
@@ -306,6 +325,20 @@ export function CustomerTable({
                         </td>
                       );
                     })}
+                    <td>
+                      {(() => {
+                        const hasUsage = Object.keys(row.llmUsage ?? {}).length > 0;
+                        if (!hasUsage) {
+                          return <span className="llm-cost-cell llm-cost-cell--empty">—</span>;
+                        }
+                        const total = sumRowLlmUsage(row);
+                        return (
+                          <span className="llm-cost-cell" title={usageTooltip(total)}>
+                            {formatUsd(total.totalCostUsd)}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td>
                       <span className="tier-label">{row.entitlementTier}</span>
                     </td>

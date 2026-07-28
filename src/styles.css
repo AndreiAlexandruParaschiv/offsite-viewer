@@ -503,6 +503,15 @@ tbody tr:hover td {
   gap: 8px;
 }
 
+.status-cell__cost {
+  color: #2f5233;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: help;
+}
+
 .status-toggle-button {
   display: inline-flex;
   flex: 0 0 auto;
@@ -570,6 +579,20 @@ tbody tr:hover td {
   color: #4e5a50;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.77rem;
+}
+
+.llm-cost-cell {
+  color: #2f5233;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.llm-cost-cell--empty {
+  color: #9aa39a;
+  font-weight: 400;
+  cursor: default;
 }
 
 .empty-cell {

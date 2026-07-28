@@ -3,6 +3,7 @@ import {
   OPPORTUNITY_SOURCES,
   type CustomerGroup,
   type DashboardDataset,
+  type LlmUsage,
   type MissingOpportunityInfo,
   type OpportunityIndicator,
   type SiteOpportunityRow,
@@ -141,10 +142,43 @@ export const resolveOpportunityDate = (opportunities: SpacecatOpportunity[]): st
     return timestamp > latest ? timestamp : latest;
   }, '');
 
+// Pulls the LLM-usage block off an opportunity, defensively: mystique stamps
+// it top-level (opportunity.llmUsage), but in case the API surfaces it nested
+// under data we check there too. Returns undefined unless all three fields are
+// present and finite, so a partial/garbage payload never renders as bogus
+// zeros.
+export const extractLlmUsage = (opportunity: SpacecatOpportunity): LlmUsage | undefined => {
+  const data = opportunity.data as Record<string, unknown> | undefined;
+  const candidate = (opportunity.llmUsage ?? data?.llmUsage) as Partial<LlmUsage> | undefined;
+  if (!candidate) {
+    return undefined;
+  }
+
+  const { totalLlmCalls, totalTokens, totalCostUsd } = candidate;
+  if (
+    !Number.isFinite(totalLlmCalls) ||
+    !Number.isFinite(totalTokens) ||
+    !Number.isFinite(totalCostUsd)
+  ) {
+    return undefined;
+  }
+
+  return {
+    totalLlmCalls: totalLlmCalls as number,
+    totalTokens: totalTokens as number,
+    totalCostUsd: totalCostUsd as number,
+  };
+};
+
 export const indicatorFromOpportunities = (
   opportunities: SpacecatOpportunity[],
   opportunityType: string,
-): { indicator: OpportunityIndicator; opportunityId: string; date: string } => {
+): {
+  indicator: OpportunityIndicator;
+  opportunityId: string;
+  date: string;
+  llmUsage?: LlmUsage;
+} => {
   const matching = opportunities.filter((opportunity) => opportunity.type === opportunityType);
 
   if (matching.length === 0) {
@@ -181,13 +215,16 @@ export const indicatorFromOpportunities = (
 
   const status = normalizeOpportunityStatus(latest.status);
   const date = resolveOpportunityDate(matching);
+  // Usage comes from the same opportunity we surface the id/date for, so the
+  // cost shown lines up with the run whose status is displayed.
+  const llmUsage = extractLlmUsage(latest);
 
   if (status === 'NEW') {
-    return { indicator: 'visible', opportunityId: latest.id, date };
+    return { indicator: 'visible', opportunityId: latest.id, date, llmUsage };
   }
 
   if (status === 'IGNORED') {
-    return { indicator: 'ignored', opportunityId: latest.id, date };
+    return { indicator: 'ignored', opportunityId: latest.id, date, llmUsage };
   }
 
   return { indicator: 'missing', opportunityId: '', date: '' };
@@ -277,12 +314,16 @@ export const buildSiteRow = ({
   const indicators = {} as Record<SourceKey, OpportunityIndicator>;
   const opportunityIds = {} as Record<SourceKey, string>;
   const opportunityDates = {} as Record<SourceKey, string>;
+  const llmUsage: Partial<Record<SourceKey, LlmUsage>> = {};
 
   sourceEntries.forEach(([sourceKey, source]) => {
     const result = indicatorFromOpportunities(opportunities, source.opportunityType);
     indicators[sourceKey] = result.indicator;
     opportunityIds[sourceKey] = result.opportunityId;
     opportunityDates[sourceKey] = result.date;
+    if (result.llmUsage) {
+      llmUsage[sourceKey] = result.llmUsage;
+    }
   });
 
   return {
@@ -295,9 +336,41 @@ export const buildSiteRow = ({
     indicators,
     opportunityIds,
     opportunityDates,
+    llmUsage,
     loadError,
   };
 };
+
+// Sums the LLM usage across every source present on one row — the per-site
+// total. Sources with no usage (wikipedia, or any un-stamped opportunity)
+// contribute nothing.
+export const sumRowLlmUsage = (row: SiteOpportunityRow): LlmUsage =>
+  sourceEntries.reduce(
+    (total, [sourceKey]) => {
+      const usage = row.llmUsage?.[sourceKey];
+      if (usage) {
+        total.totalLlmCalls += usage.totalLlmCalls;
+        total.totalTokens += usage.totalTokens;
+        total.totalCostUsd += usage.totalCostUsd;
+      }
+      return total;
+    },
+    { totalLlmCalls: 0, totalTokens: 0, totalCostUsd: 0 },
+  );
+
+// Grand total across a set of rows — used for the overview tile and the CSV
+// totals row.
+export const getLlmUsageTotal = (rows: SiteOpportunityRow[]): LlmUsage =>
+  rows.reduce(
+    (total, row) => {
+      const rowTotal = sumRowLlmUsage(row);
+      total.totalLlmCalls += rowTotal.totalLlmCalls;
+      total.totalTokens += rowTotal.totalTokens;
+      total.totalCostUsd += rowTotal.totalCostUsd;
+      return total;
+    },
+    { totalLlmCalls: 0, totalTokens: 0, totalCostUsd: 0 },
+  );
 
 export interface AuditCoverage {
   totalSlots: number;
@@ -410,6 +483,24 @@ export const groupRows = (rows: SiteOpportunityRow[]) => ({
   free: rows.filter((row) => row.customerGroup === 'free'),
 });
 
+// USD for display: 2 dp is enough on screen; the raw value is kept for
+// tooltips and CSV. Sub-cent runs read as "$0.00", which is honest for a
+// litellm estimate.
+export const formatUsd = (value: number): string =>
+  `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// Token/call counts with thousands separators.
+export const formatCount = (value: number): string => value.toLocaleString();
+
+// Sources that can carry LLM usage — wikipedia is never tracked, so it's
+// omitted from the per-source CSV columns rather than emitting permanently
+// blank ones.
+const LLM_USAGE_CSV_SOURCES: Array<[SourceKey, string]> = [
+  ['reddit', 'Reddit'],
+  ['youtube', 'YouTube'],
+  ['cited', 'Cited'],
+];
+
 const csvEscape = (value: string | number) => {
   const raw = String(value);
   if (/[",\n]/.test(raw)) {
@@ -462,33 +553,89 @@ export const toCsv = (dataset: DashboardDataset) => {
     'Load error',
     'Generated at',
     'Week of year',
+    ...LLM_USAGE_CSV_SOURCES.flatMap(([, label]) => [
+      `${label} LLM calls`,
+      `${label} LLM tokens`,
+      `${label} LLM cost (USD)`,
+    ]),
+    'LLM calls (total)',
+    'LLM tokens (total)',
+    'LLM cost USD (total)',
   ];
 
   const weekOfYear = formatIsoWeek(dataset.generatedAt);
 
-  const rows = dataset.rows.map((row) => [
-    row.siteName,
-    row.baseURL,
-    row.siteId,
-    row.organizationId,
-    row.customerGroup,
-    row.entitlementTier,
-    row.indicators.reddit,
-    row.opportunityDates.reddit,
-    row.indicators.youtube,
-    row.opportunityDates.youtube,
-    row.indicators.cited,
-    row.opportunityDates.cited,
-    row.indicators.wikipedia,
-    row.opportunityDates.wikipedia,
-    row.opportunityIds.reddit,
-    row.opportunityIds.youtube,
-    row.opportunityIds.cited,
-    row.opportunityIds.wikipedia,
-    row.loadError ?? '',
-    dataset.generatedAt,
-    weekOfYear,
-  ]);
+  // A blank cell (not 0) means the source carried no usage block; a real 0
+  // (e.g. litellm had no price for the model) is kept distinct.
+  const usageCell = (value: number | undefined) => (value === undefined ? '' : value);
 
-  return [headers, ...rows].map((row) => row.map(csvEscape).join(',')).join('\n');
+  const rows = dataset.rows.map((row) => {
+    const rowTotal = sumRowLlmUsage(row);
+
+    return [
+      row.siteName,
+      row.baseURL,
+      row.siteId,
+      row.organizationId,
+      row.customerGroup,
+      row.entitlementTier,
+      row.indicators.reddit,
+      row.opportunityDates.reddit,
+      row.indicators.youtube,
+      row.opportunityDates.youtube,
+      row.indicators.cited,
+      row.opportunityDates.cited,
+      row.indicators.wikipedia,
+      row.opportunityDates.wikipedia,
+      row.opportunityIds.reddit,
+      row.opportunityIds.youtube,
+      row.opportunityIds.cited,
+      row.opportunityIds.wikipedia,
+      row.loadError ?? '',
+      dataset.generatedAt,
+      weekOfYear,
+      ...LLM_USAGE_CSV_SOURCES.flatMap(([sourceKey]) => {
+        const usage = row.llmUsage?.[sourceKey];
+        return [
+          usageCell(usage?.totalLlmCalls),
+          usageCell(usage?.totalTokens),
+          usageCell(usage?.totalCostUsd),
+        ];
+      }),
+      rowTotal.totalLlmCalls,
+      rowTotal.totalTokens,
+      rowTotal.totalCostUsd,
+    ];
+  });
+
+  // TOTALS row: sum every numeric (LLM) column across the exported rows; the
+  // leading descriptive columns are left blank apart from the "TOTALS" label.
+  const grandTotal = getLlmUsageTotal(dataset.rows);
+  const leadingBlankColumns = 20; // columns between "TOTALS" and the first LLM column
+  const totalsRow: Array<string | number> = [
+    'TOTALS',
+    ...Array<string>(leadingBlankColumns).fill(''),
+    ...LLM_USAGE_CSV_SOURCES.flatMap(([sourceKey]) => {
+      const sourceTotal = dataset.rows.reduce(
+        (acc, row) => {
+          const usage = row.llmUsage?.[sourceKey];
+          if (usage) {
+            acc.calls += usage.totalLlmCalls;
+            acc.tokens += usage.totalTokens;
+            acc.cost += usage.totalCostUsd;
+          }
+          return acc;
+        },
+        { calls: 0, tokens: 0, cost: 0 },
+      );
+      return [sourceTotal.calls, sourceTotal.tokens, sourceTotal.cost];
+    }),
+    grandTotal.totalLlmCalls,
+    grandTotal.totalTokens,
+    grandTotal.totalCostUsd,
+  ];
+
+  return [headers, ...rows, totalsRow]
+    .map((row) => row.map(csvEscape).join(','))
+    .join('\n');
 };

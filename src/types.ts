@@ -105,6 +105,18 @@ export interface MissingOpportunityInfo {
   auditedAt?: string;
 }
 
+// Per-opportunity LLM spend, stamped by mystique into the opportunity JSON
+// (opportunity.llmUsage) for the run that produced it. Present only for
+// reddit/youtube/cited — wikipedia opportunities are never tracked. Cost is
+// litellm-priced and best-effort (0 for models missing from litellm's price
+// table, even with non-zero tokens; reddit slightly undercounts), so it's an
+// estimate, not a billing figure.
+export interface LlmUsage {
+  totalLlmCalls: number;
+  totalTokens: number;
+  totalCostUsd: number;
+}
+
 export interface SiteOpportunityRow {
   siteId: string;
   siteName: string;
@@ -115,6 +127,11 @@ export interface SiteOpportunityRow {
   indicators: Record<SourceKey, OpportunityIndicator>;
   opportunityIds: Record<SourceKey, string>;
   opportunityDates: Record<SourceKey, string>;
+  // LLM usage per source, read off the opportunity object itself (no extra
+  // call). Absent (not zero) for a source means that opportunity carried no
+  // llmUsage block — always the case for wikipedia, and for any source with
+  // no opportunity.
+  llmUsage?: Partial<Record<SourceKey, LlmUsage>>;
   // Suggestion counts per source, fetched separately (one extra call per
   // opportunity) and only populated for rows this was requested for — absent
   // (not zero) means "not fetched", not "zero suggestions".

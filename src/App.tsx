@@ -20,8 +20,11 @@ import {
   buildSiteRow,
   explainMissingOpportunity,
   findLlmoEntitlement,
+  formatCount,
   formatIsoWeek,
+  formatUsd,
   getAuditCoverage,
+  getLlmUsageTotal,
   getOverviewCounts,
   getSourceInsights,
   groupRows,
@@ -221,6 +224,11 @@ function App() {
     [dataset.generatedAt, groupedRows.paid],
   );
   const overviewCounts = useMemo(() => getOverviewCounts(visibleRows), [visibleRows]);
+  // Grand-total LLM spend across shown (Paid + Trial) rows, plus the Paid/Trial
+  // split — scoped like the per-source counts above.
+  const visibleLlmUsage = useMemo(() => getLlmUsageTotal(visibleRows), [visibleRows]);
+  const paidLlmUsage = useMemo(() => getLlmUsageTotal(groupedRows.paid), [groupedRows.paid]);
+  const trialLlmUsage = useMemo(() => getLlmUsageTotal(groupedRows.trial), [groupedRows.trial]);
   const paidOverviewCounts = useMemo(() => getOverviewCounts(groupedRows.paid), [groupedRows.paid]);
   const trialOverviewCounts = useMemo(
     () => getOverviewCounts(groupedRows.trial),
@@ -508,6 +516,18 @@ function App() {
             </div>
           ),
         )}
+        <div className="metric metric--llm-cost">
+          <span>LLM cost</span>
+          <strong>{formatUsd(visibleLlmUsage.totalCostUsd)}</strong>
+          <small>
+            {formatCount(visibleLlmUsage.totalLlmCalls)} calls &middot;{' '}
+            {formatCount(visibleLlmUsage.totalTokens)} tokens
+          </small>
+          <small className="metric__breakdown">
+            Paid {formatUsd(paidLlmUsage.totalCostUsd)} &middot; Trial {formatUsd(trialLlmUsage.totalCostUsd)}
+          </small>
+          <small className="metric__detail">est. only — reddit/youtube/cited; $0 if unpriced</small>
+        </div>
       </section>
 
       {paidWeeklyAuditCoverage.totalSlots > 0 ? (
