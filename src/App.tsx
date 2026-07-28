@@ -18,6 +18,7 @@ import {
 import { mapWithConcurrency } from './utils/concurrency';
 import {
   buildSiteRow,
+  countCurrentSuggestions,
   explainMissingOpportunity,
   findLlmoEntitlement,
   formatCount,
@@ -77,7 +78,7 @@ const fetchSuggestionCounts = async (
 
       try {
         const suggestions = await client.getOpportunitySuggestions(siteId, opportunityId);
-        counts[sourceKey] = suggestions.length;
+        counts[sourceKey] = countCurrentSuggestions(suggestions);
       } catch {
         // leave this source absent from counts on failure
       }

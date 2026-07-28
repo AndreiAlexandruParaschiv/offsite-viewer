@@ -13,6 +13,7 @@ import {
   type SpacecatEntitlement,
   type SpacecatOpportunity,
   type SpacecatSite,
+  type SpacecatSuggestion,
 } from '../types';
 
 const sourceEntries = Object.entries(OPPORTUNITY_SOURCES) as Array<
@@ -108,6 +109,13 @@ const INTERNAL_TEST_ORGANIZATIONS = new Set<string>([]);
 export const isLlmoSite = (site: SpacecatSite) => Boolean(site.config?.llmo);
 
 export const normalizeOpportunityStatus = (status: string | undefined) => status?.trim().toUpperCase();
+
+// An opportunity accumulates suggestions across audit runs and marks the
+// superseded ones OUTDATED, so the raw suggestion list sums stale + current.
+// Count only the current (non-OUTDATED) ones, so the number reflects the
+// latest run rather than the running total.
+export const countCurrentSuggestions = (suggestions: SpacecatSuggestion[]): number =>
+  suggestions.filter((suggestion) => normalizeOpportunityStatus(suggestion.status) !== 'OUTDATED').length;
 
 const normalizeCustomerIdentity = (value: string) => value.trim().toLowerCase().replace(/\/+$/, '');
 
