@@ -26,6 +26,7 @@ import {
   getAuditCoverage,
   getLlmUsageTotal,
   getOverviewCounts,
+  getSourceLlmAverages,
   getSourceInsights,
   groupRows,
   isInternalTestCustomer,
@@ -229,6 +230,9 @@ function App() {
   const visibleLlmUsage = useMemo(() => getLlmUsageTotal(visibleRows), [visibleRows]);
   const paidLlmUsage = useMemo(() => getLlmUsageTotal(groupedRows.paid), [groupedRows.paid]);
   const trialLlmUsage = useMemo(() => getLlmUsageTotal(groupedRows.trial), [groupedRows.trial]);
+  // Per-source averages (cost + calls per opportunity that carries usage),
+  // scoped to shown rows like the totals above.
+  const visibleLlmAverages = useMemo(() => getSourceLlmAverages(visibleRows), [visibleRows]);
   const paidOverviewCounts = useMemo(() => getOverviewCounts(groupedRows.paid), [groupedRows.paid]);
   const trialOverviewCounts = useMemo(
     () => getOverviewCounts(groupedRows.trial),
@@ -526,6 +530,15 @@ function App() {
           <small className="metric__breakdown">
             Paid {formatUsd(paidLlmUsage.totalCostUsd)} &middot; Trial {formatUsd(trialLlmUsage.totalCostUsd)}
           </small>
+          {(['reddit', 'youtube', 'cited'] as const).map((sourceKey) => {
+            const avg = visibleLlmAverages[sourceKey];
+            return (
+              <small className="metric__detail" key={sourceKey}>
+                {OPPORTUNITY_SOURCES[sourceKey].label} avg {formatUsd(avg.avgCostUsd)} &middot;{' '}
+                {formatCount(Math.round(avg.avgLlmCalls))} calls
+              </small>
+            );
+          })}
           <small className="metric__detail">est. only — reddit/youtube/cited; $0 if unpriced</small>
         </div>
       </section>

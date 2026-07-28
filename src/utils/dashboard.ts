@@ -365,6 +365,44 @@ export const sumRowLlmUsage = (row: SiteOpportunityRow): LlmUsage =>
     { totalLlmCalls: 0, totalTokens: 0, totalCostUsd: 0 },
   );
 
+export interface LlmUsageAverage {
+  // How many opportunities of this source actually carried usage — the
+  // denominator, so a source with none reads as count 0 rather than a
+  // divide-by-zero.
+  count: number;
+  avgLlmCalls: number;
+  avgTokens: number;
+  avgCostUsd: number;
+}
+
+// Per-source averages (cost + calls) over the opportunities that carry usage,
+// across a set of rows. Averaged per opportunity-with-usage (not per row), so
+// wikipedia — which is never tracked — comes back as count 0 / all zeros.
+export const getSourceLlmAverages = (
+  rows: SiteOpportunityRow[],
+): Record<SourceKey, LlmUsageAverage> =>
+  sourceEntries.reduce((averages, [sourceKey]) => {
+    let count = 0;
+    let calls = 0;
+    let tokens = 0;
+    let cost = 0;
+
+    rows.forEach((row) => {
+      const usage = row.llmUsage?.[sourceKey];
+      if (usage) {
+        count += 1;
+        calls += usage.totalLlmCalls;
+        tokens += usage.totalTokens;
+        cost += usage.totalCostUsd;
+      }
+    });
+
+    averages[sourceKey] = count
+      ? { count, avgLlmCalls: calls / count, avgTokens: tokens / count, avgCostUsd: cost / count }
+      : { count: 0, avgLlmCalls: 0, avgTokens: 0, avgCostUsd: 0 };
+    return averages;
+  }, {} as Record<SourceKey, LlmUsageAverage>);
+
 // Grand total across a set of rows — used for the overview tile and the CSV
 // totals row.
 export const getLlmUsageTotal = (rows: SiteOpportunityRow[]): LlmUsage =>
