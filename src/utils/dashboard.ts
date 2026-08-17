@@ -106,6 +106,28 @@ const SECURITY_PROBE_SITES = new Set([
 // that's settled.
 const INTERNAL_TEST_ORGANIZATIONS = new Set<string>([]);
 
+// Regions the offsite audits actually run for. Hardcoded copy of the
+// audit-worker's accepted set (US/GB/CA/AU/IE/NZ) — a site whose region is
+// outside this set won't get offsite audits, so surfacing it flags the
+// jp/es/de-style sites that silently never run. Kept as a plain set here; if
+// the backend list ever moves or grows, update it to match.
+export const ACCEPTED_REGIONS = new Set(['US', 'GB', 'CA', 'AU', 'IE', 'NZ']);
+
+export const normalizeRegion = (region: string | null | undefined): string =>
+  (region ?? '').trim().toUpperCase();
+
+// undefined when the region is unknown (API returned nothing) — distinct from
+// a known region that simply isn't accepted, so the UI can show "—" rather
+// than falsely flagging an unknown as unsupported.
+export const isAcceptedRegion = (region: string | null | undefined): boolean | undefined => {
+  const normalized = normalizeRegion(region);
+  if (!normalized) {
+    return undefined;
+  }
+
+  return ACCEPTED_REGIONS.has(normalized);
+};
+
 export const isLlmoSite = (site: SpacecatSite) => Boolean(site.config?.llmo);
 
 export const normalizeOpportunityStatus = (status: string | undefined) => status?.trim().toUpperCase();
@@ -346,6 +368,7 @@ export const buildSiteRow = ({
     siteName: site.name || site.baseURL,
     baseURL: site.baseURL,
     organizationId: site.organizationId,
+    region: site.region ?? null,
     customerGroup: resolveCustomerGroup(entitlementTier, site.id),
     entitlementTier,
     indicators,
@@ -591,6 +614,8 @@ export const toCsv = (dataset: DashboardDataset) => {
     'Organization ID',
     'Customer group',
     'Entitlement tier',
+    'Region',
+    'Region accepted (audit)',
     'Reddit',
     'Reddit date',
     'YouTube',
@@ -632,6 +657,11 @@ export const toCsv = (dataset: DashboardDataset) => {
       row.organizationId,
       row.customerGroup,
       row.entitlementTier,
+      row.region ?? '',
+      (() => {
+        const accepted = isAcceptedRegion(row.region);
+        return accepted === undefined ? '' : accepted ? 'yes' : 'no';
+      })(),
       row.indicators.reddit,
       row.opportunityDates.reddit,
       row.indicators.youtube,
@@ -664,7 +694,7 @@ export const toCsv = (dataset: DashboardDataset) => {
   // TOTALS row: sum every numeric (LLM) column across the exported rows; the
   // leading descriptive columns are left blank apart from the "TOTALS" label.
   const grandTotal = getLlmUsageTotal(dataset.rows);
-  const leadingBlankColumns = 20; // columns between "TOTALS" and the first LLM column
+  const leadingBlankColumns = 22; // columns between "TOTALS" and the first LLM column
   const totalsRow: Array<string | number> = [
     'TOTALS',
     ...Array<string>(leadingBlankColumns).fill(''),

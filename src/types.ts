@@ -122,6 +122,9 @@ export interface SiteOpportunityRow {
   siteName: string;
   baseURL: string;
   organizationId: string;
+  // The site's region as reported by the API (site.region), e.g. 'US'. May be
+  // null/absent — the API doesn't always populate it.
+  region?: string | null;
   customerGroup: CustomerGroup;
   entitlementTier: string;
   indicators: Record<SourceKey, OpportunityIndicator>;

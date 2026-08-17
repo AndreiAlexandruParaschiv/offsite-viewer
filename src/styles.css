@@ -595,6 +595,22 @@ tbody tr:hover td {
   cursor: default;
 }
 
+.region-cell {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.77rem;
+  color: #4e5a50;
+}
+
+.region-cell--unknown {
+  color: #9aa39a;
+}
+
+.region-cell--unsupported {
+  color: #9d261f;
+  font-weight: 700;
+  cursor: help;
+}
+
 .empty-cell {
   color: #657062;
   text-align: center;

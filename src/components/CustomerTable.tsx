@@ -18,7 +18,14 @@ import {
   type SiteOpportunityRow,
   type SourceKey,
 } from '../types';
-import { formatCount, formatUsd, spacecatAuditCommand, sumRowLlmUsage } from '../utils/dashboard';
+import {
+  formatCount,
+  formatUsd,
+  isAcceptedRegion,
+  normalizeRegion,
+  spacecatAuditCommand,
+  sumRowLlmUsage,
+} from '../utils/dashboard';
 import { StatusPill } from './StatusPill';
 
 interface CustomerTableProps {
@@ -41,7 +48,7 @@ interface CustomerTableProps {
 
 const sourceKeys = Object.keys(OPPORTUNITY_SOURCES) as Array<keyof typeof OPPORTUNITY_SOURCES>;
 
-type SortColumn = 'site' | (typeof sourceKeys)[number] | 'llmcost' | 'tier';
+type SortColumn = 'site' | (typeof sourceKeys)[number] | 'llmcost' | 'region' | 'tier';
 type SortDirection = 'asc' | 'desc';
 
 // Human-readable tooltip for a usage block, e.g. "10 calls · 326,070 tokens · $1.468751".
@@ -144,6 +151,10 @@ export function CustomerTable({
         return factor * (sumRowLlmUsage(a).totalCostUsd - sumRowLlmUsage(b).totalCostUsd);
       }
 
+      if (sort.column === 'region') {
+        return factor * normalizeRegion(a.region).localeCompare(normalizeRegion(b.region));
+      }
+
       const indicatorDiff =
         INDICATOR_ORDER[a.indicators[sort.column]] - INDICATOR_ORDER[b.indicators[sort.column]];
       if (indicatorDiff !== 0) {
@@ -238,6 +249,11 @@ export function CustomerTable({
                   </button>
                 </th>
                 <th>
+                  <button type="button" className="th-sort" onClick={() => toggleSort('region')}>
+                    Region {sortIndicator('region')}
+                  </button>
+                </th>
+                <th>
                   <button type="button" className="th-sort" onClick={() => toggleSort('tier')}>
                     Tier {sortIndicator('tier')}
                   </button>
@@ -247,7 +263,7 @@ export function CustomerTable({
             <tbody>
               {sortedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="empty-cell">
+                  <td colSpan={8} className="empty-cell">
                     No sites in this group.
                   </td>
                 </tr>
@@ -335,6 +351,28 @@ export function CustomerTable({
                         return (
                           <span className="llm-cost-cell" title={usageTooltip(total)}>
                             {formatUsd(total.totalCostUsd)}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td>
+                      {(() => {
+                        const accepted = isAcceptedRegion(row.region);
+                        const label = normalizeRegion(row.region);
+                        if (accepted === undefined) {
+                          return <span className="region-cell region-cell--unknown">—</span>;
+                        }
+                        return (
+                          <span
+                            className={`region-cell ${accepted ? '' : 'region-cell--unsupported'}`}
+                            title={
+                              accepted
+                                ? undefined
+                                : `${label} is not in the accepted audit regions (US/GB/CA/AU/IE/NZ) — offsite audits won't run for this site`
+                            }
+                          >
+                            {label}
+                            {accepted ? null : ' ⚠'}
                           </span>
                         );
                       })()}
