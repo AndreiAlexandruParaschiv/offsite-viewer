@@ -611,6 +611,12 @@ tbody tr:hover td {
   cursor: help;
 }
 
+/* Region inferred from the domain TLD rather than the API — a best guess. */
+.region-cell--inferred {
+  font-style: italic;
+  cursor: help;
+}
+
 .empty-cell {
   color: #657062;
   text-align: center;

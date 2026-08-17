@@ -122,9 +122,13 @@ export interface SiteOpportunityRow {
   siteName: string;
   baseURL: string;
   organizationId: string;
-  // The site's region as reported by the API (site.region), e.g. 'US'. May be
-  // null/absent — the API doesn't always populate it.
+  // Effective region: the API's site.region when set, otherwise inferred from
+  // the domain's country-code TLD (see resolveSiteRegion). null when neither
+  // is available (e.g. a .com site with no API region).
   region?: string | null;
+  // True when `region` came from the domain TLD rather than the API, so the UI
+  // can mark it as a best-guess.
+  regionInferred?: boolean;
   customerGroup: CustomerGroup;
   entitlementTier: string;
   indicators: Record<SourceKey, OpportunityIndicator>;

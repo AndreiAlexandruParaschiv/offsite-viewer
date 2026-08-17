@@ -362,17 +362,25 @@ export function CustomerTable({
                         if (accepted === undefined) {
                           return <span className="region-cell region-cell--unknown">—</span>;
                         }
+                        const notes = [];
+                        if (!accepted) {
+                          notes.push(
+                            `${label} is not in the accepted audit regions (US/GB/CA/AU/IE/NZ) — offsite audits won't run for this site`,
+                          );
+                        }
+                        if (row.regionInferred) {
+                          notes.push('Inferred from the domain TLD — the API did not set a region for this site');
+                        }
                         return (
                           <span
-                            className={`region-cell ${accepted ? '' : 'region-cell--unsupported'}`}
-                            title={
-                              accepted
-                                ? undefined
-                                : `${label} is not in the accepted audit regions (US/GB/CA/AU/IE/NZ) — offsite audits won't run for this site`
-                            }
+                            className={`region-cell ${accepted ? '' : 'region-cell--unsupported'} ${
+                              row.regionInferred ? 'region-cell--inferred' : ''
+                            }`}
+                            title={notes.join(' · ') || undefined}
                           >
                             {label}
-                            {accepted ? null : ' ⚠'}
+                            {row.regionInferred ? '*' : ''}
+                            {accepted ? '' : ' ⚠'}
                           </span>
                         );
                       })()}

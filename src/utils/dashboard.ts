@@ -116,6 +116,55 @@ export const ACCEPTED_REGIONS = new Set(['US', 'GB', 'CA', 'AU', 'IE', 'NZ']);
 export const normalizeRegion = (region: string | null | undefined): string =>
   (region ?? '').trim().toUpperCase();
 
+// Country-code TLD → region, used to infer a region when the API doesn't set
+// site.region. Deliberately a curated country list, NOT "any 2-letter TLD":
+// TLDs commonly used generically (.io, .ai, .co, .me, .tv) are intentionally
+// omitted so a brand.io/brand.co site isn't mislabeled as a country. .uk maps
+// to GB (its ISO region), and multi-part TLDs resolve on the final label
+// (.co.uk → uk → GB, .com.au → au → AU).
+const CCTLD_TO_REGION: Record<string, string> = {
+  us: 'US', uk: 'GB', gb: 'GB', ca: 'CA', au: 'AU', ie: 'IE', nz: 'NZ',
+  it: 'IT', es: 'ES', de: 'DE', fr: 'FR', nl: 'NL', be: 'BE', ch: 'CH',
+  at: 'AT', se: 'SE', no: 'NO', dk: 'DK', fi: 'FI', pt: 'PT', pl: 'PL',
+  cz: 'CZ', gr: 'GR', ro: 'RO', hu: 'HU', ru: 'RU', ua: 'UA', tr: 'TR',
+  jp: 'JP', cn: 'CN', kr: 'KR', in: 'IN', hk: 'HK', tw: 'TW', sg: 'SG',
+  th: 'TH', my: 'MY', ph: 'PH', vn: 'VN', br: 'BR', mx: 'MX', ar: 'AR',
+  cl: 'CL', pe: 'PE', sa: 'SA', ae: 'AE', il: 'IL', za: 'ZA', eg: 'EG',
+};
+
+// Infers a region from a base URL's country-code TLD, or undefined for a
+// generic/unknown TLD (.com/.net/.org/.io/…).
+export const regionFromBaseUrl = (baseURL: string | null | undefined): string | undefined => {
+  if (!baseURL) {
+    return undefined;
+  }
+
+  const host = baseURL
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//, '')
+    .replace(/[/?#].*$/, '')
+    .replace(/:\d+$/, '');
+  const tld = host.split('.').filter(Boolean).pop();
+
+  return tld ? CCTLD_TO_REGION[tld] : undefined;
+};
+
+// The region to show/flag for a site: the API's value wins; a ccTLD-inferred
+// value is the fallback (marked inferred so the UI can show it's a best-guess).
+export const resolveSiteRegion = (input: {
+  region?: string | null;
+  baseURL?: string | null;
+}): { region?: string; inferred: boolean } => {
+  const apiRegion = normalizeRegion(input.region);
+  if (apiRegion) {
+    return { region: apiRegion, inferred: false };
+  }
+
+  const inferred = regionFromBaseUrl(input.baseURL);
+  return inferred ? { region: inferred, inferred: true } : { region: undefined, inferred: false };
+};
+
 // undefined when the region is unknown (API returned nothing) — distinct from
 // a known region that simply isn't accepted, so the UI can show "—" rather
 // than falsely flagging an unknown as unsupported.
@@ -348,6 +397,7 @@ export const buildSiteRow = ({
 }): SiteOpportunityRow => {
   const llmoEntitlement = findLlmoEntitlement(entitlements);
   const entitlementTier = llmoEntitlement?.tier ?? 'none';
+  const resolvedRegion = resolveSiteRegion({ region: site.region, baseURL: site.baseURL });
   const indicators = {} as Record<SourceKey, OpportunityIndicator>;
   const opportunityIds = {} as Record<SourceKey, string>;
   const opportunityDates = {} as Record<SourceKey, string>;
@@ -368,7 +418,8 @@ export const buildSiteRow = ({
     siteName: site.name || site.baseURL,
     baseURL: site.baseURL,
     organizationId: site.organizationId,
-    region: site.region ?? null,
+    region: resolvedRegion.region ?? null,
+    regionInferred: resolvedRegion.inferred,
     customerGroup: resolveCustomerGroup(entitlementTier, site.id),
     entitlementTier,
     indicators,
@@ -615,6 +666,7 @@ export const toCsv = (dataset: DashboardDataset) => {
     'Customer group',
     'Entitlement tier',
     'Region',
+    'Region source',
     'Region accepted (audit)',
     'Reddit',
     'Reddit date',
@@ -658,6 +710,7 @@ export const toCsv = (dataset: DashboardDataset) => {
       row.customerGroup,
       row.entitlementTier,
       row.region ?? '',
+      row.region ? (row.regionInferred ? 'domain' : 'api') : '',
       (() => {
         const accepted = isAcceptedRegion(row.region);
         return accepted === undefined ? '' : accepted ? 'yes' : 'no';
@@ -694,7 +747,7 @@ export const toCsv = (dataset: DashboardDataset) => {
   // TOTALS row: sum every numeric (LLM) column across the exported rows; the
   // leading descriptive columns are left blank apart from the "TOTALS" label.
   const grandTotal = getLlmUsageTotal(dataset.rows);
-  const leadingBlankColumns = 22; // columns between "TOTALS" and the first LLM column
+  const leadingBlankColumns = 23; // columns between "TOTALS" and the first LLM column
   const totalsRow: Array<string | number> = [
     'TOTALS',
     ...Array<string>(leadingBlankColumns).fill(''),
