@@ -75,6 +75,16 @@ export interface SpacecatEntitlement {
   [key: string]: unknown;
 }
 
+// GET /organizations/{id}. A non-null semrushWorkspaceId means the org has a
+// Semrush workspace linked (the established "has Semrush integration" signal).
+export interface SpacecatOrganization {
+  id: string;
+  name?: string;
+  imsOrgId?: string;
+  semrushWorkspaceId?: string | null;
+  [key: string]: unknown;
+}
+
 export interface SpacecatSuggestion {
   id: string;
   opportunityId: string;
@@ -129,6 +139,9 @@ export interface SiteOpportunityRow {
   // True when `region` came from the domain TLD rather than the API, so the UI
   // can mark it as a best-guess.
   regionInferred?: boolean;
+  // Whether the site's organization has a Semrush workspace linked
+  // (org.semrushWorkspaceId non-null). Absent when not resolved for this row.
+  hasSemrush?: boolean;
   customerGroup: CustomerGroup;
   entitlementTier: string;
   indicators: Record<SourceKey, OpportunityIndicator>;

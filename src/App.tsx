@@ -125,18 +125,20 @@ const fetchRow = async (
   client: SpacecatClient,
   site: SpacecatSite,
   entitlements: SpacecatEntitlement[],
+  hasSemrush: boolean,
   includePaidExtras: boolean,
 ): Promise<SiteOpportunityRow> => {
   let row: SiteOpportunityRow;
 
   try {
     const opportunities = await client.getSiteOpportunities(site.id);
-    row = buildSiteRow({ site, opportunities, entitlements });
+    row = buildSiteRow({ site, opportunities, entitlements, hasSemrush });
   } catch (siteError) {
     row = buildSiteRow({
       site,
       opportunities: [],
       entitlements,
+      hasSemrush,
       loadError: siteError instanceof Error ? siteError.message : 'Opportunity load failed',
     });
   }
@@ -210,6 +212,7 @@ function App() {
     client: SpacecatClient;
     sites: SpacecatSite[];
     entitlementsByOrg: Map<string, SpacecatEntitlement[]>;
+    semrushByOrg: Map<string, boolean>;
   } | null>(null);
 
   const groupedRows = useMemo(() => groupRows(dataset.rows), [dataset.rows]);
@@ -269,18 +272,25 @@ function App() {
       const llmoSites = allSites.filter(isLlmoSite);
       const organizationIds = [...new Set(llmoSites.map((site) => site.organizationId))];
       const entitlementsByOrg = new Map<string, SpacecatEntitlement[]>();
+      // Semrush integration is an org-level flag (org.semrushWorkspaceId
+      // non-null) fetched once per org, in parallel with entitlements.
+      const semrushByOrg = new Map<string, boolean>();
 
       setProgress(`Loading entitlements for ${organizationIds.length} organizations`);
 
       await mapWithConcurrency(organizationIds, ENTITLEMENT_FETCH_CONCURRENCY, async (organizationId) => {
-        try {
-          entitlementsByOrg.set(organizationId, await client.getEntitlements(organizationId));
-        } catch {
-          entitlementsByOrg.set(organizationId, []);
-        }
+        const [entitlements, hasSemrush] = await Promise.all([
+          client.getEntitlements(organizationId).catch(() => [] as SpacecatEntitlement[]),
+          client
+            .getOrganization(organizationId)
+            .then((organization) => Boolean(organization?.semrushWorkspaceId))
+            .catch(() => false),
+        ]);
+        entitlementsByOrg.set(organizationId, entitlements);
+        semrushByOrg.set(organizationId, hasSemrush);
       });
 
-      loadContextRef.current = { client, sites: llmoSites, entitlementsByOrg };
+      loadContextRef.current = { client, sites: llmoSites, entitlementsByOrg, semrushByOrg };
       setHasLoadContext(true);
 
       const customerGroupBySite = new Map(
@@ -311,7 +321,8 @@ function App() {
         );
 
         const entitlements = entitlementsByOrg.get(site.organizationId) ?? [];
-        const row = await fetchRow(client, site, entitlements, true);
+        const hasSemrush = semrushByOrg.get(site.organizationId) ?? false;
+        const row = await fetchRow(client, site, entitlements, hasSemrush, true);
 
         rowsById.set(row.siteId, row);
         publishDataset();
@@ -371,7 +382,8 @@ function App() {
         );
 
         const entitlements = context.entitlementsByOrg.get(site.organizationId) ?? [];
-        const row = await fetchRow(context.client, site, entitlements, group === 'paid');
+        const hasSemrush = context.semrushByOrg.get(site.organizationId) ?? false;
+        const row = await fetchRow(context.client, site, entitlements, hasSemrush, group === 'paid');
 
         rowsById.set(row.siteId, row);
         publishDataset();

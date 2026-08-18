@@ -388,11 +388,13 @@ export const buildSiteRow = ({
   site,
   opportunities,
   entitlements,
+  hasSemrush,
   loadError,
 }: {
   site: SpacecatSite;
   opportunities: SpacecatOpportunity[];
   entitlements: SpacecatEntitlement[];
+  hasSemrush?: boolean;
   loadError?: string;
 }): SiteOpportunityRow => {
   const llmoEntitlement = findLlmoEntitlement(entitlements);
@@ -420,6 +422,7 @@ export const buildSiteRow = ({
     organizationId: site.organizationId,
     region: resolvedRegion.region ?? null,
     regionInferred: resolvedRegion.inferred,
+    hasSemrush,
     customerGroup: resolveCustomerGroup(entitlementTier, site.id),
     entitlementTier,
     indicators,
@@ -668,6 +671,7 @@ export const toCsv = (dataset: DashboardDataset) => {
     'Region',
     'Region source',
     'Region accepted (audit)',
+    'Semrush',
     'Reddit',
     'Reddit date',
     'YouTube',
@@ -715,6 +719,7 @@ export const toCsv = (dataset: DashboardDataset) => {
         const accepted = isAcceptedRegion(row.region);
         return accepted === undefined ? '' : accepted ? 'yes' : 'no';
       })(),
+      row.hasSemrush === undefined ? '' : row.hasSemrush ? 'yes' : 'no',
       row.indicators.reddit,
       row.opportunityDates.reddit,
       row.indicators.youtube,
@@ -747,7 +752,7 @@ export const toCsv = (dataset: DashboardDataset) => {
   // TOTALS row: sum every numeric (LLM) column across the exported rows; the
   // leading descriptive columns are left blank apart from the "TOTALS" label.
   const grandTotal = getLlmUsageTotal(dataset.rows);
-  const leadingBlankColumns = 23; // columns between "TOTALS" and the first LLM column
+  const leadingBlankColumns = 24; // columns between "TOTALS" and the first LLM column
   const totalsRow: Array<string | number> = [
     'TOTALS',
     ...Array<string>(leadingBlankColumns).fill(''),

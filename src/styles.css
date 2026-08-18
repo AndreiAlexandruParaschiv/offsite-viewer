@@ -617,6 +617,24 @@ tbody tr:hover td {
   cursor: help;
 }
 
+.semrush-cell {
+  font-size: 0.77rem;
+  font-weight: 700;
+}
+
+.semrush-cell--yes {
+  color: #2f5233;
+}
+
+.semrush-cell--no {
+  color: #9d261f;
+}
+
+.semrush-cell--unknown {
+  color: #9aa39a;
+  font-weight: 400;
+}
+
 .empty-cell {
   color: #657062;
   text-align: center;

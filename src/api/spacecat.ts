@@ -2,6 +2,7 @@ import type {
   SpacecatAudit,
   SpacecatEntitlement,
   SpacecatOpportunity,
+  SpacecatOrganization,
   SpacecatSite,
   SpacecatSuggestion,
 } from '../types';
@@ -104,6 +105,12 @@ export class SpacecatClient {
   async getEntitlements(organizationId: string): Promise<SpacecatEntitlement[]> {
     return this.request<SpacecatEntitlement[]>(
       `/organizations/${encodeURIComponent(organizationId)}/entitlements`,
+    );
+  }
+
+  async getOrganization(organizationId: string): Promise<SpacecatOrganization> {
+    return this.request<SpacecatOrganization>(
+      `/organizations/${encodeURIComponent(organizationId)}`,
     );
   }
 

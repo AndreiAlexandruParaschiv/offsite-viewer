@@ -48,7 +48,7 @@ interface CustomerTableProps {
 
 const sourceKeys = Object.keys(OPPORTUNITY_SOURCES) as Array<keyof typeof OPPORTUNITY_SOURCES>;
 
-type SortColumn = 'site' | (typeof sourceKeys)[number] | 'llmcost' | 'region' | 'tier';
+type SortColumn = 'site' | (typeof sourceKeys)[number] | 'llmcost' | 'region' | 'semrush' | 'tier';
 type SortDirection = 'asc' | 'desc';
 
 // Human-readable tooltip for a usage block, e.g. "10 calls · 326,070 tokens · $1.468751".
@@ -155,6 +155,10 @@ export function CustomerTable({
         return factor * normalizeRegion(a.region).localeCompare(normalizeRegion(b.region));
       }
 
+      if (sort.column === 'semrush') {
+        return factor * (Number(a.hasSemrush ?? false) - Number(b.hasSemrush ?? false));
+      }
+
       const indicatorDiff =
         INDICATOR_ORDER[a.indicators[sort.column]] - INDICATOR_ORDER[b.indicators[sort.column]];
       if (indicatorDiff !== 0) {
@@ -254,6 +258,11 @@ export function CustomerTable({
                   </button>
                 </th>
                 <th>
+                  <button type="button" className="th-sort" onClick={() => toggleSort('semrush')}>
+                    Semrush {sortIndicator('semrush')}
+                  </button>
+                </th>
+                <th>
                   <button type="button" className="th-sort" onClick={() => toggleSort('tier')}>
                     Tier {sortIndicator('tier')}
                   </button>
@@ -263,7 +272,7 @@ export function CustomerTable({
             <tbody>
               {sortedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="empty-cell">
+                  <td colSpan={9} className="empty-cell">
                     No sites in this group.
                   </td>
                 </tr>
@@ -384,6 +393,15 @@ export function CustomerTable({
                           </span>
                         );
                       })()}
+                    </td>
+                    <td>
+                      {row.hasSemrush === undefined ? (
+                        <span className="semrush-cell semrush-cell--unknown">—</span>
+                      ) : (
+                        <span className={`semrush-cell semrush-cell--${row.hasSemrush ? 'yes' : 'no'}`}>
+                          {row.hasSemrush ? 'yes' : 'no'}
+                        </span>
+                      )}
                     </td>
                     <td>
                       <span className="tier-label">{row.entitlementTier}</span>
