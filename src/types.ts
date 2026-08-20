@@ -92,28 +92,6 @@ export interface SpacecatSuggestion {
   [key: string]: unknown;
 }
 
-// GET /sites/{siteId}/latest-audit/{auditType} — the audit that produces (or
-// fails to produce) a source's opportunity. auditResult.success distinguishes
-// a real audit failure from "ran fine, nothing to report".
-export interface SpacecatAuditResult {
-  success: boolean;
-  error?: string;
-  status?: string;
-  [key: string]: unknown;
-}
-
-export interface SpacecatAudit {
-  auditType: string;
-  auditedAt?: string;
-  auditResult?: SpacecatAuditResult;
-  [key: string]: unknown;
-}
-
-export interface MissingOpportunityInfo {
-  kind: 'audit-error' | 'no-opportunity';
-  detail?: string;
-  auditedAt?: string;
-}
 
 // Per-opportunity LLM spend, stamped by mystique into the opportunity JSON
 // (opportunity.llmUsage) for the run that produced it. Present only for
@@ -152,13 +130,12 @@ export interface SiteOpportunityRow {
   // llmUsage block — always the case for wikipedia, and for any source with
   // no opportunity.
   llmUsage?: Partial<Record<SourceKey, LlmUsage>>;
-  // Suggestion counts per source, fetched separately (one extra call per
-  // opportunity) and only populated for rows this was requested for — absent
-  // (not zero) means "not fetched", not "zero suggestions".
-  suggestionCounts?: Partial<Record<SourceKey, number>>;
-  // Why a "missing" source is missing, fetched per-source (one extra call per
-  // missing source) and only populated for rows this was requested for.
-  missingInfo?: Partial<Record<SourceKey, MissingOpportunityInfo>>;
+  // All opportunities grouped by source key, used for expanded-row sub-tables
+  // and client-side week filtering. Populated by buildSiteRow.
+  allOpportunitiesBySource: Record<SourceKey, SpacecatOpportunity[]>;
+  // Suggestion counts keyed by opportunity ID; lazily populated when a row is
+  // expanded. Absent means "not yet fetched", not "zero".
+  suggestionCountsByOpportunityId?: Record<string, number>;
   loadError?: string;
 }
 
@@ -166,3 +143,33 @@ export interface DashboardDataset {
   rows: SiteOpportunityRow[];
   generatedAt: string;
 }
+
+export interface FilterState {
+  weeks: string[];              // ISO-ish labels e.g. ['W33 2026']; empty = all
+  sourceKeys: SourceKey[];      // enabled sources; subset of OPPORTUNITY_SOURCES keys
+  tiers: CustomerGroup[];       // enabled tiers; e.g. ['paid', 'trial']
+  // null = all sites; [] = none selected; string[] = exact baseURL allowlist
+  selectedSites: string[] | null;
+}
+
+// Compute current week label inline to avoid a circular dependency
+// (weekFilter.ts imports SpacecatOpportunity from types.ts).
+const _computeCurrentWeek = (): string[] => {
+  const now = new Date();
+  const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+  const target = new Date(date);
+  target.setUTCDate(date.getUTCDate() + 3);
+  const firstThursday = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
+  const firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
+  const week = 1 + Math.round((target.getTime() - firstThursday.getTime()) / (7 * 24 * 60 * 60 * 1000));
+  return [`W${String(week).padStart(2, '0')} ${target.getUTCFullYear()}`];
+};
+
+export const DEFAULT_FILTER_STATE: FilterState = {
+  weeks: _computeCurrentWeek(),
+  sourceKeys: Object.keys(OPPORTUNITY_SOURCES) as SourceKey[],
+  tiers: ['paid'],
+  selectedSites: null,
+};

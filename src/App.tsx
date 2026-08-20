@@ -1,15 +1,19 @@
-import { Download, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
+import { ShieldCheck } from 'lucide-react';
 import { SpacecatClient } from './api/spacecat';
-import { CustomerTable } from './components/CustomerTable';
+import { ConnectionBar } from './components/ConnectionBar';
+import { FilterBar } from './components/FilterBar';
+import { Toast } from './components/Toast';
+import { HealthSummary } from './components/HealthSummary';
+import { CustomerSection } from './components/CustomerSection';
 import {
   API_DEFAULT_BASE_URL,
+  DEFAULT_FILTER_STATE,
   OPPORTUNITY_SOURCES,
   type CustomerGroup,
   type DashboardDataset,
   type FetchStatus,
-  type MissingOpportunityInfo,
-  type OpportunityIndicator,
+  type FilterState,
   type SiteOpportunityRow,
   type SourceKey,
   type SpacecatEntitlement,
@@ -19,21 +23,12 @@ import { mapWithConcurrency } from './utils/concurrency';
 import {
   buildSiteRow,
   countCurrentSuggestions,
-  explainMissingOpportunity,
   findLlmoEntitlement,
-  formatCount,
-  formatIsoWeek,
-  formatUsd,
-  getAuditCoverage,
-  getLlmUsageTotal,
-  getOverviewCounts,
-  getSourceLlmAverages,
-  getSourceInsights,
   groupRows,
   isInternalTestCustomer,
   isLlmoSite,
   resolveCustomerGroup,
-  toCsv,
+  toCsvExportBrief,
 } from './utils/dashboard';
 
 const TOKEN_STORAGE_KEY = 'offsite-viewer.token';
@@ -45,80 +40,29 @@ const BASE_URL_STORAGE_KEY = 'offsite-viewer.baseUrl';
 const ENTITLEMENT_FETCH_CONCURRENCY = 20;
 const OPPORTUNITY_FETCH_CONCURRENCY = 12;
 
-const sourceKeysList = Object.keys(OPPORTUNITY_SOURCES) as SourceKey[];
-
-const formatTimestamp = (value?: string) => {
-  if (!value) {
-    return 'Not loaded';
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
-};
-
-// One extra API call per visible/ignored opportunity — the opportunity
-// object itself carries no suggestion count. Failures are left absent from
-// the result rather than surfaced, since a missing count is much less
-// disruptive here than a failed site load.
-const fetchSuggestionCounts = async (
+// One extra API call per opportunity — the opportunity object itself carries
+// no suggestion count. Returns a map keyed by opportunity ID. Failures are
+// left absent from the result rather than surfaced, since a missing count is
+// much less disruptive here than a failed site load.
+const fetchSuggestionCountsByOppId = async (
   client: SpacecatClient,
   siteId: string,
   row: SiteOpportunityRow,
-): Promise<Partial<Record<SourceKey, number>>> => {
-  const counts: Partial<Record<SourceKey, number>> = {};
-
+): Promise<Record<string, number>> => {
+  const counts: Record<string, number> = {};
+  // Collect all opportunity IDs from allOpportunitiesBySource
+  const allOpps = Object.values(row.allOpportunitiesBySource).flat();
   await Promise.all(
-    sourceKeysList.map(async (sourceKey) => {
-      const opportunityId = row.opportunityIds[sourceKey];
-      if (!opportunityId) {
-        return;
-      }
-
+    allOpps.map(async (opp) => {
       try {
-        const suggestions = await client.getOpportunitySuggestions(siteId, opportunityId);
-        counts[sourceKey] = countCurrentSuggestions(suggestions);
+        const suggestions = await client.getOpportunitySuggestions(siteId, opp.id);
+        counts[opp.id] = countCurrentSuggestions(suggestions);
       } catch {
-        // leave this source absent from counts on failure
+        // leave absent on failure
       }
     }),
   );
-
   return counts;
-};
-
-// One extra API call per missing source — each source's own latest audit
-// (GET /sites/{siteId}/latest-audit/{opportunityType}) explains whether it
-// genuinely failed vs ran fine with nothing to report. Failures are left
-// absent from the result rather than surfaced, same reasoning as suggestion
-// counts.
-const fetchMissingInfo = async (
-  client: SpacecatClient,
-  siteId: string,
-  row: SiteOpportunityRow,
-): Promise<Partial<Record<SourceKey, MissingOpportunityInfo>>> => {
-  const info: Partial<Record<SourceKey, MissingOpportunityInfo>> = {};
-
-  await Promise.all(
-    sourceKeysList.map(async (sourceKey) => {
-      if (row.indicators[sourceKey] !== 'missing') {
-        return;
-      }
-
-      try {
-        const audit = await client.getLatestAudit(siteId, OPPORTUNITY_SOURCES[sourceKey].opportunityType);
-        const explanation = explainMissingOpportunity(row.indicators[sourceKey], audit);
-        if (explanation) {
-          info[sourceKey] = explanation;
-        }
-      } catch {
-        // leave this source absent from info on failure
-      }
-    }),
-  );
-
-  return info;
 };
 
 const fetchRow = async (
@@ -126,15 +70,12 @@ const fetchRow = async (
   site: SpacecatSite,
   entitlements: SpacecatEntitlement[],
   hasSemrush: boolean,
-  includePaidExtras: boolean,
 ): Promise<SiteOpportunityRow> => {
-  let row: SiteOpportunityRow;
-
   try {
     const opportunities = await client.getSiteOpportunities(site.id);
-    row = buildSiteRow({ site, opportunities, entitlements, hasSemrush });
+    return buildSiteRow({ site, opportunities, entitlements, hasSemrush });
   } catch (siteError) {
-    row = buildSiteRow({
+    return buildSiteRow({
       site,
       opportunities: [],
       entitlements,
@@ -142,17 +83,6 @@ const fetchRow = async (
       loadError: siteError instanceof Error ? siteError.message : 'Opportunity load failed',
     });
   }
-
-  if (includePaidExtras) {
-    const [suggestionCounts, missingInfo] = await Promise.all([
-      fetchSuggestionCounts(client, site.id, row),
-      fetchMissingInfo(client, site.id, row),
-    ]);
-    row.suggestionCounts = suggestionCounts;
-    row.missingInfo = missingInfo;
-  }
-
-  return row;
 };
 
 // Publishing the dataset re-sorts every row (localeCompare) and re-renders the
@@ -180,17 +110,6 @@ const createDatasetPublisher = (
   };
 };
 
-const downloadCsv = (dataset: DashboardDataset, filenamePrefix: string) => {
-  const csv = toCsv(dataset);
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${filenamePrefix}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
-};
-
 function App() {
   const [baseUrl, setBaseUrl] = useState(
     () => sessionStorage.getItem(BASE_URL_STORAGE_KEY) ?? API_DEFAULT_BASE_URL,
@@ -204,6 +123,8 @@ function App() {
   // Trial isn't loaded on initial Load (see loadDashboard) — it's opt-in via
   // its own button. Drives that button's label (Load vs Refresh).
   const [trialLoaded, setTrialLoaded] = useState(false);
+  const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER_STATE);
+  const [csvWarning, setCsvWarning] = useState<{ message: string; rows: { siteId: string; baseUrl: string }[] } | null>(null);
 
   // Snapshot from the last full Load, kept around so "Refresh paid
   // customers" can re-fetch just paid sites' opportunities without
@@ -215,49 +136,44 @@ function App() {
     semrushByOrg: Map<string, boolean>;
   } | null>(null);
 
+  // Track which site IDs have already had suggestion counts fetched so we
+  // don't re-fetch on every expand toggle.
+  const fetchedSiteIds = useRef<Set<string>>(new Set());
+
   const groupedRows = useMemo(() => groupRows(dataset.rows), [dataset.rows]);
   const visibleRows = useMemo(
     () => [...groupedRows.paid, ...groupedRows.trial],
     [groupedRows.paid, groupedRows.trial],
   );
-  const visibleDataset = useMemo(
-    () => ({ rows: visibleRows, generatedAt: dataset.generatedAt }),
-    [dataset.generatedAt, visibleRows],
+  const availableDomains = useMemo(() => visibleRows.map((r) => r.baseURL), [visibleRows]);
+  const siteIdMap = useMemo(
+    () => new Map(visibleRows.map((r) => [r.siteId, r.baseURL])),
+    [visibleRows],
   );
-  const paidDataset = useMemo(
-    () => ({ rows: groupedRows.paid, generatedAt: dataset.generatedAt }),
-    [dataset.generatedAt, groupedRows.paid],
-  );
-  const overviewCounts = useMemo(() => getOverviewCounts(visibleRows), [visibleRows]);
-  // Grand-total LLM spend across shown (Paid + Trial) rows, plus the Paid/Trial
-  // split — scoped like the per-source counts above.
-  const visibleLlmUsage = useMemo(() => getLlmUsageTotal(visibleRows), [visibleRows]);
-  const paidLlmUsage = useMemo(() => getLlmUsageTotal(groupedRows.paid), [groupedRows.paid]);
-  const trialLlmUsage = useMemo(() => getLlmUsageTotal(groupedRows.trial), [groupedRows.trial]);
-  // Per-source averages (cost + calls per opportunity that carries usage),
-  // scoped to shown rows like the totals above.
-  const visibleLlmAverages = useMemo(() => getSourceLlmAverages(visibleRows), [visibleRows]);
-  const paidOverviewCounts = useMemo(() => getOverviewCounts(groupedRows.paid), [groupedRows.paid]);
-  const trialOverviewCounts = useMemo(
-    () => getOverviewCounts(groupedRows.trial),
-    [groupedRows.trial],
-  );
-  // Extra per-source insight (visible-with-suggestions, ignored) is Paid-scoped
-  // because suggestion counts are only fetched for Paid rows.
-  const paidSourceInsights = useMemo(() => getSourceInsights(groupedRows.paid), [groupedRows.paid]);
-  // Audit-run coverage (did the underlying audit actually run?) is only ever
-  // fetched for Paid rows — see fetchMissingInfo in fetchRow — so this is
-  // scoped to Paid only, not visibleRows. Split by cadence (reddit/youtube/
-  // cited run weekly, wikipedia runs monthly) so the two aren't averaged
-  // together into one misleading number.
-  const paidWeeklyAuditCoverage = useMemo(
-    () => getAuditCoverage(groupedRows.paid, 'weekly'),
-    [groupedRows.paid],
-  );
-  const paidMonthlyAuditCoverage = useMemo(
-    () => getAuditCoverage(groupedRows.paid, 'monthly'),
-    [groupedRows.paid],
-  );
+
+  // Rows after applying the filter bar selections (tiers + site allowlist).
+  // Used for HealthSummary so the stats cards reflect the same subset as the tables.
+  const filteredVisibleRows = useMemo(() => {
+    return visibleRows.filter((row) => {
+      if (!filter.tiers.includes(row.customerGroup)) return false;
+      if (filter.selectedSites !== null && !filter.selectedSites.includes(row.baseURL)) return false;
+      return true;
+    });
+  }, [visibleRows, filter.tiers, filter.selectedSites]);
+
+  const filterLabel = useMemo(() => {
+    const sourceCount = Object.keys(OPPORTUNITY_SOURCES).length;
+    const parts: string[] = [];
+    if (filter.weeks.length === 1) parts.push(filter.weeks[0]);
+    else parts.push(`${filter.weeks.length} weeks`);
+    if (filter.sourceKeys.length === sourceCount) parts.push('All audit types');
+    else parts.push(filter.sourceKeys.map((k) => OPPORTUNITY_SOURCES[k].label).join(' · '));
+    parts.push(filter.selectedSites === null ? 'All sites' : filter.selectedSites.length === 0 ? 'No sites' : `${filter.selectedSites.length} sites`);
+    if (filter.tiers.length >= 2) parts.push('All tiers');
+    else if (filter.tiers.length === 0) parts.push('No tiers');
+    else parts.push(filter.tiers.map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join(' · '));
+    return parts.join(' · ');
+  }, [filter]);
 
   const loadDashboard = async () => {
     setStatus('loading');
@@ -322,7 +238,7 @@ function App() {
 
         const entitlements = entitlementsByOrg.get(site.organizationId) ?? [];
         const hasSemrush = semrushByOrg.get(site.organizationId) ?? false;
-        const row = await fetchRow(client, site, entitlements, hasSemrush, true);
+        const row = await fetchRow(client, site, entitlements, hasSemrush);
 
         rowsById.set(row.siteId, row);
         publishDataset();
@@ -383,7 +299,7 @@ function App() {
 
         const entitlements = context.entitlementsByOrg.get(site.organizationId) ?? [];
         const hasSemrush = context.semrushByOrg.get(site.organizationId) ?? false;
-        const row = await fetchRow(context.client, site, entitlements, hasSemrush, group === 'paid');
+        const row = await fetchRow(context.client, site, entitlements, hasSemrush);
 
         rowsById.set(row.siteId, row);
         publishDataset();
@@ -404,74 +320,118 @@ function App() {
     }
   };
 
-  // Flips a single opportunity's status in production via PATCH — visible
-  // (NEW) <-> ignored (IGNORED). Confirms first since this is a real write
-  // other tools/teams may also read, not just a display toggle.
-  const toggleOpportunityStatus = async (row: SiteOpportunityRow, sourceKey: SourceKey) => {
+  // Flips a single opportunity's status in production via PATCH — NEW <->
+  // IGNORED. Called only after ConfirmationModal confirms in SourceSubTable;
+  // no second window.confirm() here.
+  const onToggleStatus = async (
+    row: SiteOpportunityRow,
+    sourceKey: SourceKey,
+    opportunityId: string,
+    newStatus: 'NEW' | 'IGNORED',
+  ): Promise<void> => {
     const context = loadContextRef.current;
-    const currentStatus = row.indicators[sourceKey];
-    const opportunityId = row.opportunityIds[sourceKey];
-
-    if (!context || !opportunityId || currentStatus === 'missing') {
-      return;
-    }
-
-    const nextStatus: OpportunityIndicator = currentStatus === 'visible' ? 'ignored' : 'visible';
-    const sourceLabel = OPPORTUNITY_SOURCES[sourceKey].label;
-
-    const confirmed = window.confirm(
-      `Set the ${sourceLabel} opportunity for "${row.siteName}" to ${nextStatus === 'visible' ? 'visible (NEW)' : 'ignored'}?\n\nThis updates live production data.`,
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      await context.client.updateOpportunityStatus(
-        row.siteId,
-        opportunityId,
-        nextStatus === 'visible' ? 'NEW' : 'IGNORED',
-      );
-    } catch (toggleError) {
-      window.alert(
-        `Failed to update ${sourceLabel} status: ${
-          toggleError instanceof Error ? toggleError.message : 'unknown error'
-        }`,
-      );
-      return;
-    }
-
+    if (!context) return;
+    // Safety: this is called only after ConfirmationModal confirmation in SourceSubTable
+    await context.client.updateOpportunityStatus(row.siteId, opportunityId, newStatus);
     setDataset((current) => ({
       ...current,
-      rows: current.rows.map((currentRow) =>
-        currentRow.siteId === row.siteId
-          ? {
-              ...currentRow,
-              indicators: { ...currentRow.indicators, [sourceKey]: nextStatus },
-              opportunityDates: { ...currentRow.opportunityDates, [sourceKey]: new Date().toISOString() },
-            }
-          : currentRow,
+      rows: current.rows.map((r) => {
+        if (r.siteId !== row.siteId) return r;
+        const newIndicator = newStatus === 'NEW' ? 'visible' : 'ignored';
+        const updatedOpps = (r.allOpportunitiesBySource[sourceKey] ?? []).map((opp) =>
+          opp.id === opportunityId ? { ...opp, status: newStatus, updatedAt: new Date().toISOString() } : opp,
+        );
+        return {
+          ...r,
+          allOpportunitiesBySource: { ...r.allOpportunitiesBySource, [sourceKey]: updatedOpps },
+          indicators: { ...r.indicators, [sourceKey]: newIndicator },
+          opportunityDates: { ...r.opportunityDates, [sourceKey]: new Date().toISOString() },
+        };
+      }),
+    }));
+  };
+
+  // Deletes an opportunity in production. Called only after ConfirmationModal
+  // confirms in SourceSubTable; no second window.confirm() here.
+  const onDeleteOpportunity = async (
+    row: SiteOpportunityRow,
+    opportunityId: string,
+  ): Promise<void> => {
+    const context = loadContextRef.current;
+    if (!context) return;
+    // Safety: called only after ConfirmationModal confirmation in SourceSubTable
+    await context.client.deleteOpportunity(row.siteId, opportunityId);
+    setDataset((current) => ({
+      ...current,
+      rows: current.rows.map((r) => {
+        if (r.siteId !== row.siteId) return r;
+        // Remove the deleted opportunity from whichever source it belongs to
+        const updatedAllOpps = {} as typeof r.allOpportunitiesBySource;
+        for (const [k, opps] of Object.entries(r.allOpportunitiesBySource)) {
+          updatedAllOpps[k as SourceKey] = opps.filter((o) => o.id !== opportunityId);
+        }
+        return { ...r, allOpportunitiesBySource: updatedAllOpps };
+      }),
+    }));
+  };
+
+  // Lazily fetches suggestion counts when a row is first expanded.
+  const onExpandRow = async (siteId: string): Promise<void> => {
+    const context = loadContextRef.current;
+    if (!context || fetchedSiteIds.current.has(siteId)) return;
+    fetchedSiteIds.current.add(siteId);
+    const row = dataset.rows.find((r) => r.siteId === siteId);
+    if (!row) return;
+    const suggestionCountsByOpportunityId = await fetchSuggestionCountsByOppId(
+      context.client,
+      siteId,
+      row,
+    );
+    setDataset((current) => ({
+      ...current,
+      rows: current.rows.map((r) =>
+        r.siteId === siteId ? { ...r, suggestionCountsByOpportunityId } : r,
       ),
     }));
   };
 
-  const canLoad = status !== 'loading' && token.trim().length > 0 && baseUrl.trim().length > 0;
-  const canRefreshPaid = status !== 'loading' && hasLoadContext && groupedRows.paid.length > 0;
-  // Trial can be loaded as soon as there's a load context — unlike paid it may
-  // have zero rows initially (it's not loaded on the initial Load).
-  const canRefreshTrial = status !== 'loading' && hasLoadContext;
-  const canExport = visibleRows.length > 0;
+  const downloadBlob = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+
+  const handleExportSites = () => {
+    if (!filteredVisibleRows.length) return;
+
+    const now = new Date();
+    // Filename timestamp: YYYY-MM-DD-HH-MM-SS-mmm
+    const ts = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+      String(now.getHours()).padStart(2, '0'),
+      String(now.getMinutes()).padStart(2, '0'),
+      String(now.getSeconds()).padStart(2, '0'),
+      String(now.getMilliseconds()).padStart(3, '0'),
+    ].join('-');
+
+    downloadBlob(
+      toCsvExportBrief(filteredVisibleRows, filter.weeks, filter.sourceKeys, filter.tiers),
+      `abv-offsite-operational-brief-${ts}.csv`,
+    );
+  };
 
   return (
-    <main>
+    <div className="app">
       <header className="app-header">
         <div>
-          <p className="eyebrow">LLMO coverage</p>
-          <h1>Offsite Opportunities Viewer</h1>
-          <p className="header-copy">
-            Visible offsite opportunities across paid and trial LLMO sites.
-          </p>
+          <p className="eyebrow">Adobe Brand Visibility</p>
+          <h1>Offsite Opportunities</h1>
         </div>
         <div className="header-status">
           <ShieldCheck size={18} aria-hidden="true" />
@@ -480,158 +440,71 @@ function App() {
           </span>
         </div>
       </header>
-
-      <section className="control-bar" aria-label="API controls">
-        <label>
-          API base URL
-          <input
-            value={baseUrl}
-            onChange={(event) => setBaseUrl(event.target.value)}
-            placeholder={API_DEFAULT_BASE_URL}
-          />
-        </label>
-        <label>
-          IMS or session token
-          <input
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            type="password"
-            placeholder="Bearer token"
-          />
-        </label>
-        <div className="actions">
-          <button type="button" onClick={loadDashboard} disabled={!canLoad}>
-            <RefreshCw size={16} className={status === 'loading' ? 'spin' : ''} />
-            Load
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => downloadCsv(visibleDataset, `offsite-opportunities-${dataset.generatedAt.slice(0, 10)}`)}
-            disabled={!canExport}
-          >
-            <Download size={16} />
-            Export CSV
-          </button>
-        </div>
-      </section>
-
-      <section className="overview" aria-label="Opportunity overview">
-        {(Object.keys(OPPORTUNITY_SOURCES) as Array<keyof typeof OPPORTUNITY_SOURCES>).map(
-          (sourceKey) => (
-            <div className="metric" key={sourceKey}>
-              <span>{OPPORTUNITY_SOURCES[sourceKey].label}</span>
-              <strong>{overviewCounts[sourceKey] ?? 0}</strong>
-              <small>sites shown with yes</small>
-              <small className="metric__breakdown">
-                Paid {paidOverviewCounts[sourceKey] ?? 0} &middot; Trial {trialOverviewCounts[sourceKey] ?? 0}
-              </small>
-              <small className="metric__detail">
-                Paid: {paidSourceInsights[sourceKey]?.visibleWithSuggestions ?? 0} visible w/ suggestions &middot;{' '}
-                {paidSourceInsights[sourceKey]?.ignored ?? 0} ignored
-              </small>
-            </div>
-          ),
-        )}
-        <div className="metric metric--llm-cost">
-          <span>LLM cost</span>
-          <strong>{formatUsd(visibleLlmUsage.totalCostUsd)}</strong>
-          <small>
-            {formatCount(visibleLlmUsage.totalLlmCalls)} calls &middot;{' '}
-            {formatCount(visibleLlmUsage.totalTokens)} tokens
-          </small>
-          <small className="metric__breakdown">
-            Paid {formatUsd(paidLlmUsage.totalCostUsd)} &middot; Trial {formatUsd(trialLlmUsage.totalCostUsd)}
-          </small>
-          {(['reddit', 'youtube', 'cited'] as const).map((sourceKey) => {
-            const avg = visibleLlmAverages[sourceKey];
-            return (
-              <small className="metric__detail" key={sourceKey}>
-                {OPPORTUNITY_SOURCES[sourceKey].label} avg {formatUsd(avg.avgCostUsd)} &middot;{' '}
-                {formatCount(Math.round(avg.avgLlmCalls))} calls
-              </small>
-            );
-          })}
-          <small className="metric__detail">est. only — reddit/youtube/cited; $0 if unpriced</small>
-        </div>
-      </section>
-
-      {paidWeeklyAuditCoverage.totalSlots > 0 ? (
-        <section className="audit-coverage" aria-label="Paid weekly audit run coverage">
-          <span className="audit-coverage__label">
-            Paid weekly audit runs (Reddit/YouTube/Cited) &mdash; {paidWeeklyAuditCoverage.totalSlots} total (
-            {groupedRows.paid.length} sites &times; 3 sources)
-          </span>
-          <span className="audit-coverage__stat">
-            {paidWeeklyAuditCoverage.ranWithOpportunity} ran &rarr; opportunity created
-          </span>
-          <span className="audit-coverage__stat audit-coverage__stat--error">
-            {paidWeeklyAuditCoverage.ranErrored} ran &rarr; errored out
-          </span>
-          <span className="audit-coverage__stat">
-            {paidWeeklyAuditCoverage.ranNoOpportunity} ran &rarr; no opportunity created
-          </span>
-          <span className="audit-coverage__stat audit-coverage__stat--unknown">
-            {paidWeeklyAuditCoverage.neverRanOrUnknown} never ran / unknown
-          </span>
-        </section>
+      <ConnectionBar
+        baseUrl={baseUrl}
+        token={token}
+        status={status}
+        statusText={progress}
+        onBaseUrlChange={setBaseUrl}
+        onTokenChange={setToken}
+        onLoad={loadDashboard}
+      />
+      {error ? <div className="load-error">{error}</div> : null}
+      <FilterBar
+        filter={filter}
+        onFilterChange={setFilter}
+        availableDomains={availableDomains}
+        siteIdMap={siteIdMap}
+        onExport={handleExportSites}
+        exportDisabled={filteredVisibleRows.length === 0}
+        onCsvWarning={(w) => setCsvWarning(w)}
+      />
+      {csvWarning ? (
+        <Toast
+          message={csvWarning.message}
+          rows={csvWarning.rows}
+          onDismiss={() => setCsvWarning(null)}
+        />
       ) : null}
-
-      {paidMonthlyAuditCoverage.totalSlots > 0 ? (
-        <section className="audit-coverage" aria-label="Paid monthly audit run coverage">
-          <span className="audit-coverage__label">
-            Paid monthly audit runs (Wikipedia) &mdash; {paidMonthlyAuditCoverage.totalSlots} total (
-            {groupedRows.paid.length} sites &times; 1 source)
-          </span>
-          <span className="audit-coverage__stat">
-            {paidMonthlyAuditCoverage.ranWithOpportunity} ran &rarr; opportunity created
-          </span>
-          <span className="audit-coverage__stat audit-coverage__stat--error">
-            {paidMonthlyAuditCoverage.ranErrored} ran &rarr; errored out
-          </span>
-          <span className="audit-coverage__stat">
-            {paidMonthlyAuditCoverage.ranNoOpportunity} ran &rarr; no opportunity created
-          </span>
-          <span className="audit-coverage__stat audit-coverage__stat--unknown">
-            {paidMonthlyAuditCoverage.neverRanOrUnknown} never ran / unknown
-          </span>
-        </section>
-      ) : null}
-
-      <section className="load-state" aria-live="polite">
-        <span className={`load-state__dot load-state__dot--${status}`} />
-        <span>{progress || (error ? 'Load failed' : `Last loaded ${formatTimestamp(dataset.generatedAt)}`)}</span>
-        {status === 'success' ? <span className="shown-count">{visibleRows.length} sites shown</span> : null}
-        {error ? <strong>{error}</strong> : null}
+      <HealthSummary
+        rows={filteredVisibleRows}
+        weeks={filter.weeks}
+        enabledSourceKeys={filter.sourceKeys}
+        filterLabel={filterLabel}
+      />
+      <hr className="section-divider" />
+      <section className="legend-section" aria-label="Status legend">
+        <p className="legend-line">
+          <span className="legend--new">● Visible</span> — produced & visible to customer &nbsp;&nbsp;
+          <span className="legend--ign">● Hidden</span> — produced, but suppressed &nbsp;&nbsp;
+          <span className="legend--not">○ Not Produced</span> — no opportunity produced in selected week(s), audit types, sites, and tiers
+        </p>
       </section>
-
-      <CustomerTable
+      <hr className="section-divider" />
+      <CustomerSection
         title="Paid customers"
         rows={groupedRows.paid}
-        defaultOpen
-        onExport={() =>
-          downloadCsv(paidDataset, `offsite-opportunities-paid-${formatIsoWeek(dataset.generatedAt)}`)
-        }
-        onRefresh={() => refreshCustomerGroup('paid')}
-        refreshDisabled={!canRefreshPaid}
-        onToggleStatus={toggleOpportunityStatus}
-        enableAuditCommand
+        filter={filter}
+        onRefresh={() => { void refreshCustomerGroup('paid'); }}
+        refreshDisabled={status === 'loading' || !hasLoadContext || groupedRows.paid.length === 0}
+        refreshedAt={dataset.generatedAt || undefined}
+        refreshedCount={groupedRows.paid.length || undefined}
+        onToggleStatus={onToggleStatus}
+        onDeleteOpportunity={onDeleteOpportunity}
+        onExpandRow={onExpandRow}
       />
-      <CustomerTable
+      <CustomerSection
         title="Trial customers"
         rows={groupedRows.trial}
-        defaultOpen={false}
-        onRefresh={() => refreshCustomerGroup('trial')}
-        refreshDisabled={!canRefreshTrial}
+        filter={filter}
+        onRefresh={() => { void refreshCustomerGroup('trial'); }}
         refreshLabel={trialLoaded ? 'Refresh' : 'Load'}
-        refreshTitle={
-          trialLoaded
-            ? 'Re-check opportunities for trial sites'
-            : 'Load trial customers — not loaded on the initial Load to keep the tab light'
-        }
-        onToggleStatus={toggleOpportunityStatus}
+        refreshDisabled={status === 'loading' || !hasLoadContext}
+        onToggleStatus={onToggleStatus}
+        onDeleteOpportunity={onDeleteOpportunity}
+        onExpandRow={onExpandRow}
       />
-    </main>
+    </div>
   );
 }
 

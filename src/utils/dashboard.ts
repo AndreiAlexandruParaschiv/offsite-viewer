@@ -1,15 +1,13 @@
 import { PAID_SITE_ID_ALLOWLIST } from '../data/paidSiteAllowlist';
+import { formatWeekLabel, isoWeeksAgo, opportunityTouchedInWeeks } from './weekFilter';
 import {
   OPPORTUNITY_SOURCES,
   type CustomerGroup,
   type DashboardDataset,
   type LlmUsage,
-  type MissingOpportunityInfo,
   type OpportunityIndicator,
   type SiteOpportunityRow,
-  type SourceCadence,
   type SourceKey,
-  type SpacecatAudit,
   type SpacecatEntitlement,
   type SpacecatOpportunity,
   type SpacecatSite,
@@ -28,9 +26,9 @@ const SPACECAT_SLACK_BOT_MENTION = '<@U05AMKKSZPG>';
 
 // The bot expects a bare domain (no scheme), matching how it's actually
 // invoked in practice — e.g. "run audit lovesac.com offsite-brand-presence".
-export const spacecatAuditCommand = (baseURL: string): string => {
+export const spacecatAuditCommand = (baseURL: string, auditType = 'offsite-brand-presence'): string => {
   const domain = baseURL.replace(/^https?:\/\//, '').replace(/\/+$/, '');
-  return `${SPACECAT_SLACK_BOT_MENTION} run audit ${domain} offsite-brand-presence`;
+  return `${SPACECAT_SLACK_BOT_MENTION} run audit ${domain} ${auditType}`;
 };
 
 const LLMO_PRODUCT_HINTS = ['llmo', 'LLMO', 'ai-visibility', 'AI_VISIBILITY', 'llm_optimizer', 'LLM_OPTIMIZER'];
@@ -179,6 +177,13 @@ export const isAcceptedRegion = (region: string | null | undefined): boolean | u
 
 export const isLlmoSite = (site: SpacecatSite) => Boolean(site.config?.llmo);
 
+/**
+ * Maps a raw hallucination rate (0–1) to a severity level.
+ * Thresholds mirror the quality-gate display in SourceSummaryCard / TotalsBar.
+ */
+export const hallucinationLevel = (rate: number): 'ok' | 'warn' | 'high' =>
+  rate < 0.1 ? 'ok' : rate <= 0.25 ? 'warn' : 'high';
+
 export const normalizeOpportunityStatus = (status: string | undefined) => status?.trim().toUpperCase();
 
 // An opportunity accumulates suggestions across audit runs and marks the
@@ -256,6 +261,35 @@ export const extractLlmUsage = (opportunity: SpacecatOpportunity): LlmUsage | un
   };
 };
 
+export interface QaVerdict {
+  rate: number;
+  analyzedCount: number;
+  hallucinatedCount: number;
+  rateDetermined: boolean;
+}
+
+// Reads the qaVerdict stamped by the mystique QA gate (Reddit, YouTube, Cited).
+// Mirrors extractLlmUsage: the gate writes to bo_json["opportunity"]["qaVerdict"],
+// which Spacecat stores under data.fullAnalysis.opportunity. Top-level fallbacks
+// are kept for resilience if the shape ever changes.
+// Returns undefined for Wikipedia (no gate) and any opportunity without the field.
+// When rateDetermined is false the rate is meaningless — callers must treat it as N/A.
+export const extractQaVerdict = (opportunity: SpacecatOpportunity): QaVerdict | undefined => {
+  const data = opportunity.data as Record<string, unknown> | undefined;
+  const fullAnalysisOpportunity = (data?.fullAnalysis as { opportunity?: unknown } | undefined)
+    ?.opportunity as Record<string, unknown> | undefined;
+  const raw = (fullAnalysisOpportunity?.qaVerdict ?? data?.qaVerdict) as Partial<QaVerdict> | undefined;
+  if (!raw) return undefined;
+  const { rate, analyzedCount, hallucinatedCount, rateDetermined } = raw;
+  if (!Number.isFinite(rate) || !Number.isFinite(analyzedCount) || !Number.isFinite(hallucinatedCount)) return undefined;
+  return {
+    rate: rate as number,
+    analyzedCount: analyzedCount as number,
+    hallucinatedCount: hallucinatedCount as number,
+    rateDetermined: rateDetermined !== false,
+  };
+};
+
 export const indicatorFromOpportunities = (
   opportunities: SpacecatOpportunity[],
   opportunityType: string,
@@ -316,28 +350,18 @@ export const indicatorFromOpportunities = (
   return { indicator: 'missing', opportunityId: '', date: '' };
 };
 
-// Explains a "missing" source using its own latest audit (GET
-// /sites/{siteId}/latest-audit/{auditType}, same auditType as
-// OPPORTUNITY_SOURCES[key].opportunityType): 'audit-error' when the audit
-// itself failed (auditResult.success === false, with its own error message);
-// 'no-opportunity' when the audit ran fine but produced no opportunity —
-// opportunity creation happens asynchronously via Mystique after a
-// successful audit, so this is a normal, non-failure outcome, not a bug.
-// Returns undefined when the source isn't "missing" or no audit record
-// exists at all (never run).
-export const explainMissingOpportunity = (
-  indicator: OpportunityIndicator,
-  audit: SpacecatAudit | null,
-): MissingOpportunityInfo | undefined => {
-  if (indicator !== 'missing' || !audit?.auditResult) {
-    return undefined;
-  }
-
-  if (audit.auditResult.success === false) {
-    return { kind: 'audit-error', detail: audit.auditResult.error, auditedAt: audit.auditedAt };
-  }
-
-  return { kind: 'no-opportunity', auditedAt: audit.auditedAt };
+// Like indicatorFromOpportunities but applies a week filter first.
+// When weeks is empty, behaves identically to indicatorFromOpportunities.
+export const computeFilteredIndicator = (
+  opportunities: SpacecatOpportunity[],
+  opportunityType: string,
+  weeks: string[],
+): ReturnType<typeof indicatorFromOpportunities> => {
+  const filtered =
+    weeks.length === 0
+      ? opportunities
+      : opportunities.filter((o) => opportunityTouchedInWeeks(o, weeks));
+  return indicatorFromOpportunities(filtered, opportunityType);
 };
 
 export const findLlmoEntitlement = (entitlements: SpacecatEntitlement[]) => {
@@ -405,6 +429,7 @@ export const buildSiteRow = ({
   const opportunityDates = {} as Record<SourceKey, string>;
   const llmUsage: Partial<Record<SourceKey, LlmUsage>> = {};
 
+  const allOpportunitiesBySource = {} as Record<SourceKey, SpacecatOpportunity[]>;
   sourceEntries.forEach(([sourceKey, source]) => {
     const result = indicatorFromOpportunities(opportunities, source.opportunityType);
     indicators[sourceKey] = result.indicator;
@@ -413,6 +438,9 @@ export const buildSiteRow = ({
     if (result.llmUsage) {
       llmUsage[sourceKey] = result.llmUsage;
     }
+    allOpportunitiesBySource[sourceKey] = opportunities.filter(
+      (o) => o.type === source.opportunityType,
+    );
   });
 
   return {
@@ -429,6 +457,7 @@ export const buildSiteRow = ({
     opportunityIds,
     opportunityDates,
     llmUsage,
+    allOpportunitiesBySource,
     loadError,
   };
 };
@@ -450,43 +479,31 @@ export const sumRowLlmUsage = (row: SiteOpportunityRow): LlmUsage =>
     { totalLlmCalls: 0, totalTokens: 0, totalCostUsd: 0 },
   );
 
-export interface LlmUsageAverage {
-  // How many opportunities of this source actually carried usage — the
-  // denominator, so a source with none reads as count 0 rather than a
-  // divide-by-zero.
-  count: number;
-  avgLlmCalls: number;
-  avgTokens: number;
-  avgCostUsd: number;
-}
+// Sum LLM costs across every week-filtered opportunity for one source.
+// This is the filter-aware replacement for row.llmUsage[sourceKey]: every opp
+// that appears in the expanded sub-table contributes, not just the "winner".
+export const computeFilteredSourceCost = (
+  opportunities: SpacecatOpportunity[],
+  weeks: string[],
+): number => {
+  const filtered =
+    weeks.length === 0
+      ? opportunities
+      : opportunities.filter((o) => opportunityTouchedInWeeks(o, weeks));
+  return filtered.reduce((sum, opp) => sum + (extractLlmUsage(opp)?.totalCostUsd ?? 0), 0);
+};
 
-// Per-source averages (cost + calls) over the opportunities that carry usage,
-// across a set of rows. Averaged per opportunity-with-usage (not per row), so
-// wikipedia — which is never tracked — comes back as count 0 / all zeros.
-export const getSourceLlmAverages = (
-  rows: SiteOpportunityRow[],
-): Record<SourceKey, LlmUsageAverage> =>
-  sourceEntries.reduce((averages, [sourceKey]) => {
-    let count = 0;
-    let calls = 0;
-    let tokens = 0;
-    let cost = 0;
-
-    rows.forEach((row) => {
-      const usage = row.llmUsage?.[sourceKey];
-      if (usage) {
-        count += 1;
-        calls += usage.totalLlmCalls;
-        tokens += usage.totalTokens;
-        cost += usage.totalCostUsd;
-      }
-    });
-
-    averages[sourceKey] = count
-      ? { count, avgLlmCalls: calls / count, avgTokens: tokens / count, avgCostUsd: cost / count }
-      : { count: 0, avgLlmCalls: 0, avgTokens: 0, avgCostUsd: 0 };
-    return averages;
-  }, {} as Record<SourceKey, LlmUsageAverage>);
+// Sum costs across the enabled sources for one row, respecting the week filter.
+export const computeFilteredRowCost = (
+  row: SiteOpportunityRow,
+  weeks: string[],
+  enabledSourceKeys: SourceKey[],
+): number =>
+  enabledSourceKeys.reduce(
+    (sum, key) =>
+      sum + computeFilteredSourceCost(row.allOpportunitiesBySource[key] ?? [], weeks),
+    0,
+  );
 
 // Grand total across a set of rows — used for the overview tile and the CSV
 // totals row.
@@ -502,66 +519,6 @@ export const getLlmUsageTotal = (rows: SiteOpportunityRow[]): LlmUsage =>
     { totalLlmCalls: 0, totalTokens: 0, totalCostUsd: 0 },
   );
 
-export interface AuditCoverage {
-  totalSlots: number;
-  // visible/ignored means an opportunity exists, which is only possible if
-  // the underlying audit ran and succeeded — no separate audit check needed.
-  ranWithOpportunity: number;
-  // "missing" sources only: broken down by what their own latest-audit
-  // record (fetched via fetchMissingInfo, paid rows only) actually says.
-  ranErrored: number;
-  ranNoOpportunity: number;
-  // "missing" with no audit record at all, or missingInfo was never fetched
-  // for this row (e.g. a trial/free row, where it's paid-only) — can't tell
-  // "genuinely never ran" apart from "not checked" from the data available.
-  neverRanOrUnknown: number;
-}
-
-// Answers "did every audit actually run?" across a set of rows. Only
-// meaningful for rows whose missingInfo has actually been fetched (paid
-// rows) — trial/free rows always fall into neverRanOrUnknown since that
-// check is paid-only.
-//
-// An optional cadence restricts which sources count — e.g. 'weekly' scopes
-// to reddit/youtube/cited only, since mixing in monthly wikipedia runs would
-// skew a "did this week's audits run" question.
-export const getAuditCoverage = (rows: SiteOpportunityRow[], cadence?: SourceCadence): AuditCoverage => {
-  const entries = cadence ? sourceEntries.filter(([, source]) => source.cadence === cadence) : sourceEntries;
-
-  let ranWithOpportunity = 0;
-  let ranErrored = 0;
-  let ranNoOpportunity = 0;
-  let neverRanOrUnknown = 0;
-
-  rows.forEach((row) => {
-    entries.forEach(([sourceKey]) => {
-      const indicator = row.indicators[sourceKey];
-
-      if (indicator === 'visible' || indicator === 'ignored') {
-        ranWithOpportunity += 1;
-        return;
-      }
-
-      const info = row.missingInfo?.[sourceKey];
-      if (info?.kind === 'audit-error') {
-        ranErrored += 1;
-      } else if (info?.kind === 'no-opportunity') {
-        ranNoOpportunity += 1;
-      } else {
-        neverRanOrUnknown += 1;
-      }
-    });
-  });
-
-  return {
-    totalSlots: rows.length * entries.length,
-    ranWithOpportunity,
-    ranErrored,
-    ranNoOpportunity,
-    neverRanOrUnknown,
-  };
-};
-
 export const getOverviewCounts = (rows: SiteOpportunityRow[]) =>
   sourceEntries.reduce(
     (counts, [sourceKey]) => ({
@@ -570,42 +527,6 @@ export const getOverviewCounts = (rows: SiteOpportunityRow[]) =>
     }),
     {} as Record<SourceKey, number>,
   );
-
-export interface SourceInsight {
-  visible: number;
-  // Visible AND has at least one suggestion — the actionable subset.
-  // suggestionCounts is only fetched for Paid rows, so this is meaningful for
-  // Paid only; on rows without counts it reads as 0.
-  visibleWithSuggestions: number;
-  ignored: number;
-}
-
-// Per-source counts beyond the plain visible tally: how many visible
-// opportunities actually carry suggestions, and how many are ignored. Meant
-// to be run over a single group's rows (e.g. Paid).
-export const getSourceInsights = (
-  rows: SiteOpportunityRow[],
-): Record<SourceKey, SourceInsight> =>
-  sourceEntries.reduce((insights, [sourceKey]) => {
-    let visible = 0;
-    let visibleWithSuggestions = 0;
-    let ignored = 0;
-
-    rows.forEach((row) => {
-      const indicator = row.indicators[sourceKey];
-      if (indicator === 'visible') {
-        visible += 1;
-        if ((row.suggestionCounts?.[sourceKey] ?? 0) > 0) {
-          visibleWithSuggestions += 1;
-        }
-      } else if (indicator === 'ignored') {
-        ignored += 1;
-      }
-    });
-
-    insights[sourceKey] = { visible, visibleWithSuggestions, ignored };
-    return insights;
-  }, {} as Record<SourceKey, SourceInsight>);
 
 export const groupRows = (rows: SiteOpportunityRow[]) => ({
   paid: rows.filter((row) => row.customerGroup === 'paid' && !isInternalTestCustomer(row)),
@@ -779,4 +700,269 @@ export const toCsv = (dataset: DashboardDataset) => {
   return [headers, ...rows, totalsRow]
     .map((row) => row.map(csvEscape).join(','))
     .join('\n');
+};
+
+// Health summary CSV: one row per source, aggregate counts across all rows.
+export const toCsvHealthSummary = (
+  rows: SiteOpportunityRow[],
+  generatedAt: string,
+): string => {
+  const headers = ['Source', 'NEW', 'IGNORED', 'PRODUCED', 'NOT_PRODUCED', 'TOTAL', 'COST_USD'];
+  const data = sourceEntries.map(([sourceKey, source]) => {
+    const visible = rows.filter((r) => r.indicators[sourceKey] === 'visible').length;
+    const ignored = rows.filter((r) => r.indicators[sourceKey] === 'ignored').length;
+    const produced = visible + ignored;
+    const notProduced = rows.length - produced;
+    const cost = rows.reduce((sum, r) => sum + (r.llmUsage?.[sourceKey]?.totalCostUsd ?? 0), 0);
+    return [source.label, visible, ignored, produced, notProduced, rows.length, cost];
+  });
+
+  const meta = [`Generated: ${generatedAt}`, ...Array(headers.length - 1).fill('')];
+  return [[...headers], ...data, meta].map((row) => row.map(csvEscape).join(',')).join('\n');
+};
+
+// ── LAST-VISIBLE HEALTH SIGNAL ────────────────────────────────────────────────
+// Three-tier signal for each source cell, based on:
+//   error   — no NEW opportunity ever (pipeline problem)
+//   warning — last visible exists but is 2+ ISO weeks ago
+//   info    — last visible was produced exactly in the previous ISO week (1 week ago)
+//   ok      — last visible was produced in the current ISO week (0 weeks ago)
+export type LastVisibleSignal = 'ok' | 'info' | 'warning' | 'error';
+
+export const lastVisibleSignal = (
+  allOpps: SpacecatOpportunity[],
+): LastVisibleSignal => {
+  const newOpps = allOpps.filter((o) => o.status?.toUpperCase() === 'NEW');
+  if (newOpps.length === 0) return 'error';
+
+  const lastVisible = newOpps.reduce((latest, o) => {
+    const ta = latest.updatedAt ?? latest.createdAt ?? '';
+    const tb = o.updatedAt ?? o.createdAt ?? '';
+    return tb > ta ? o : latest;
+  });
+
+  const weeksAgo = isoWeeksAgo(lastVisible.updatedAt ?? lastVisible.createdAt ?? '');
+  if (weeksAgo > 1) return 'warning';
+  if (weeksAgo === 1) return 'info';
+  return 'ok'; // current week — no icon
+};
+
+// ── BRIEF EXPORT FORMAT ────────────────────────────────────────────────────────
+// Single file: filters block → health summary → data table (one row per
+// site × audit type × in-range opportunity). The filename encodes the
+// timestamp so no "Generated At" column is needed in the data rows.
+
+const parseTs = (iso: string | undefined): { week: string; date: string; time: string } => {
+  if (!iso) return { week: '', date: '', time: '' };
+  return { week: formatWeekLabel(iso), date: iso.slice(0, 10), time: iso.slice(11, 19) };
+};
+
+const LAST_VISIBLE_STATUS_TEXT: Record<LastVisibleSignal, string> = {
+  ok: 'Last visible opportunity produced in the current week',
+  info: 'Last visible opportunity produced in the previous week',
+  warning: 'Last visible opportunity is older than 1 week',
+  error: 'No visible opportunity ever produced',
+};
+
+export const toCsvExportBrief = (
+  rows: SiteOpportunityRow[],
+  weeks: string[],
+  enabledSourceKeys: SourceKey[],
+  tiers: string[],
+): string => {
+  const toLine = (row: (string | number)[]) => row.map(csvEscape).join(',');
+
+  // ── Filters (one item per column) ──────────────────────────────────────────
+  const filterLines = [
+    ['Weeks', ...(weeks.length === 0 ? ['All weeks'] : weeks)],
+    ['Audit Types', ...enabledSourceKeys.map((k) => OPPORTUNITY_SOURCES[k].label)],
+    ['Tiers', ...tiers.map((t) => t.charAt(0).toUpperCase() + t.slice(1))],
+    ['Sites', ...rows.map((r) => r.baseURL.replace(/^https?:\/\//, ''))],
+  ];
+
+  // ── Health stats per source ─────────────────────────────────────────────────
+  const stats = enabledSourceKeys.map((key) => {
+    const source = OPPORTUNITY_SOURCES[key];
+    let visible = 0;
+    let ignored = 0;
+    let qaHallucinatedCount = 0;
+    let qaAnalyzedCount = 0;
+    let costNewUsd = 0;
+    let costIgnoredUsd = 0;
+    let costUsd = 0;
+    rows.forEach((row) => {
+      const allOpps = row.allOpportunitiesBySource[key] ?? [];
+      const result = computeFilteredIndicator(allOpps, source.opportunityType, weeks);
+      if (result.indicator === 'visible') visible++;
+      else if (result.indicator === 'ignored') ignored++;
+      const filteredOpps =
+        weeks.length === 0 ? allOpps : allOpps.filter((o) => opportunityTouchedInWeeks(o, weeks));
+      filteredOpps.forEach((opp) => {
+        const c = extractLlmUsage(opp)?.totalCostUsd ?? 0;
+        costUsd += c;
+        if (opp.status?.toUpperCase() === 'NEW') costNewUsd += c;
+        else if (opp.status?.toUpperCase() === 'IGNORED') costIgnoredUsd += c;
+        const qa = extractQaVerdict(opp);
+        if (qa?.rateDetermined) {
+          qaHallucinatedCount += qa.hallucinatedCount;
+          qaAnalyzedCount += qa.analyzedCount;
+        }
+      });
+    });
+    const hallRate = qaAnalyzedCount === 0 ? 'N/A' : `${Math.round((qaHallucinatedCount / qaAnalyzedCount) * 100)}%`;
+    return {
+      label: source.label,
+      isMonthly: source.cadence === 'monthly',
+      visible,
+      ignored,
+      notProduced: rows.length - visible - ignored,
+      hallRate,
+      costNewUsd,
+      costIgnoredUsd,
+      costUsd,
+    };
+  });
+
+  const totalVisible = stats.reduce((s, x) => s + x.visible, 0);
+  const totalIgnored = stats.reduce((s, x) => s + x.ignored, 0);
+  const totalNotProduced = stats.reduce((s, x) => s + x.notProduced, 0);
+  const totalProduced = totalVisible + totalIgnored;
+  const totalSlots = rows.length * enabledSourceKeys.length;
+  const grandTotalCost = stats.reduce((s, x) => s + (x.isMonthly ? 0 : x.costUsd), 0);
+
+  // ── Counts table: blank label col, then Visible / Hidden / Not Produced / Hallucination Rate ─
+  const countsHeader = ['', 'Visible', 'Hidden', 'Not Produced', 'Hallucination Rate'];
+  const countsRows = stats.map((s) => [s.label, s.visible, s.ignored, s.notProduced, s.hallRate]);
+
+  // ── Totals: one header row + one data row ─────────────────────────────────
+  const totalsHeader = ['', 'Total Visible', 'Total Hidden', 'Total Produced', 'Total Not Produced', 'Total Opportunities Target'];
+  const totalsData = ['Totals', totalVisible, totalIgnored, totalProduced, totalNotProduced, totalSlots];
+
+  // ── Costs table: blank label col, then costs; Grand Total only on first row
+  const costsHeader = ['', 'Cost Visible USD', 'Cost Hidden USD', 'Cost Produced USD', '', 'Grand Total Cost USD'];
+  const costsRows = stats.map((s, i) => {
+    const costProduced = s.isMonthly ? 'N/A' : s.costNewUsd + s.costIgnoredUsd;
+    return [
+      s.label,
+      s.isMonthly ? 'N/A' : s.costNewUsd,
+      s.isMonthly ? 'N/A' : s.costIgnoredUsd,
+      costProduced,
+      '',
+      i === 0 ? grandTotalCost : '',
+    ];
+  });
+
+  // ── Data table ──────────────────────────────────────────────────────────────
+  const dataHeaders = [
+    'Site Name', 'Base URL', 'Site ID', 'Organization ID', 'Tier', 'Region',
+    'Audit Type', 'Status', 'Week', 'Date', 'Time', 'Cost USD',
+    'Last Visible Week', 'Last Visible Date', 'Last Visible Time', 'Last Visible Status',
+    'Hallucination Rate', 'Hallucinated Items', 'Analyzed Items',
+  ];
+
+  const dataRows: (string | number)[][] = [];
+
+  rows.forEach((row) => {
+    enabledSourceKeys.forEach((key) => {
+      const source = OPPORTUNITY_SOURCES[key];
+      const allOpps = row.allOpportunitiesBySource[key] ?? [];
+      const filteredOpps =
+        weeks.length === 0 ? allOpps : allOpps.filter((o) => opportunityTouchedInWeeks(o, weeks));
+
+      const newOpps = allOpps.filter((o) => o.status?.toUpperCase() === 'NEW');
+      const lastVisibleOpp =
+        newOpps.length === 0
+          ? null
+          : newOpps.reduce((latest, o) => {
+              const ta = latest.updatedAt ?? latest.createdAt ?? '';
+              const tb = o.updatedAt ?? o.createdAt ?? '';
+              return tb > ta ? o : latest;
+            });
+      const lv = parseTs(lastVisibleOpp?.updatedAt ?? lastVisibleOpp?.createdAt);
+      const signal = lastVisibleSignal(allOpps);
+      const statusText = LAST_VISIBLE_STATUS_TEXT[signal];
+
+      const siteBase = [
+        row.siteName, row.baseURL, row.siteId, row.organizationId,
+        row.entitlementTier, row.region ?? '', source.label,
+      ];
+
+      if (filteredOpps.length === 0) {
+        dataRows.push([...siteBase, 'Not Produced', '', '', '', '', lv.week, lv.date, lv.time, statusText, 'N/A', '', '']);
+      } else {
+        filteredOpps.forEach((opp) => {
+          const isNew = opp.status?.toUpperCase() === 'NEW';
+          const isIgnored = opp.status?.toUpperCase() === 'IGNORED';
+          const status = isNew ? 'Visible' : isIgnored ? 'Hidden' : (opp.status ?? '');
+          const ts = parseTs(opp.updatedAt ?? opp.createdAt);
+          const oppCost = source.cadence !== 'monthly' ? (extractLlmUsage(opp)?.totalCostUsd ?? '') : '';
+          const qa = source.cadence !== 'monthly' ? extractQaVerdict(opp) : undefined;
+          const hallRateCsv = qa
+            ? (qa.rateDetermined ? `${Math.round(qa.rate * 100)}%` : 'N/A')
+            : (source.cadence === 'monthly' ? 'N/A' : '');
+          const hallItems = qa?.rateDetermined ? qa.hallucinatedCount : '';
+          const analyzedItems = qa?.rateDetermined ? qa.analyzedCount : '';
+          dataRows.push([...siteBase, status, ts.week, ts.date, ts.time, oppCost, lv.week, lv.date, lv.time, statusText, hallRateCsv, hallItems, analyzedItems]);
+        });
+      }
+    });
+  });
+
+  return [
+    toLine(['Adobe Brand Visibility - Offsite - Operational Brief']),
+    '',
+    filterLines.map(toLine).join('\n'),
+    '',
+    [countsHeader, ...countsRows].map(toLine).join('\n'),
+    '',
+    [totalsHeader, totalsData].map(toLine).join('\n'),
+    '',
+    [costsHeader, ...costsRows].map(toLine).join('\n'),
+    '',
+    [dataHeaders, ...dataRows].map(toLine).join('\n'),
+  ].join('\n');
+};
+
+// ── LEGACY EXPORT FORMAT (kept for backward-compat) ──────────────────────────
+// Sites table CSV: one row per site.
+export const toCsvSitesTable = (dataset: DashboardDataset, enabledSourceKeys?: SourceKey[], weeks: string[] = []): string => {
+  const allSourceKeys = sourceEntries.map(([k]) => k);
+  const sourceKeyOrder = enabledSourceKeys
+    ? allSourceKeys.filter((k) => enabledSourceKeys.includes(k))
+    : allSourceKeys;
+  const headers = [
+    'Site',
+    'Base URL',
+    'Site ID',
+    'Organization ID',
+    'Region',
+    ...sourceKeyOrder.flatMap((k) => [
+      OPPORTUNITY_SOURCES[k].label,
+      `${OPPORTUNITY_SOURCES[k].label} date`,
+    ]),
+    'Total cost USD',
+    'Tier',
+    'Customer group',
+    'Semrush',
+    'Generated at',
+  ];
+
+  const dataRows = dataset.rows.map((row) => [
+    row.siteName,
+    row.baseURL,
+    row.siteId,
+    row.organizationId,
+    row.region ?? '',
+    ...sourceKeyOrder.flatMap((k) => [
+      row.indicators[k],
+      row.opportunityDates[k],
+    ]),
+    computeFilteredRowCost(row, weeks, sourceKeyOrder),
+    row.entitlementTier,
+    row.customerGroup,
+    row.hasSemrush === undefined ? '' : row.hasSemrush ? 'yes' : 'no',
+    dataset.generatedAt,
+  ]);
+
+  return [headers, ...dataRows].map((row) => row.map(csvEscape).join(',')).join('\n');
 };
