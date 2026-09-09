@@ -409,20 +409,19 @@ function App() {
     if (!filteredVisibleRows.length) return;
 
     const now = new Date();
-    // Filename timestamp: YYYY-MM-DD-HH-MM-SS-mmm
-    const ts = [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, '0'),
-      String(now.getDate()).padStart(2, '0'),
-      String(now.getHours()).padStart(2, '0'),
-      String(now.getMinutes()).padStart(2, '0'),
-      String(now.getSeconds()).padStart(2, '0'),
-      String(now.getMilliseconds()).padStart(3, '0'),
-    ].join('-');
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    // ISO week number
+    const dayOfWeek = now.getDay() || 7;
+    const thursday = new Date(now);
+    thursday.setDate(now.getDate() + 4 - dayOfWeek);
+    const yearStart = new Date(thursday.getFullYear(), 0, 1);
+    const wk = String(Math.ceil(((thursday.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)).padStart(2, '0');
 
     downloadBlob(
       toCsvExportBrief(filteredVisibleRows, filter.weeks, filter.sourceKeys, filter.tiers),
-      `abv-offsite-operational-brief-${ts}.csv`,
+      `${yyyy}-${mm}-${dd}-wk${wk}-abv-offsite-operational-report.csv`,
     );
   };
 
