@@ -5,4 +5,3 @@ output/
 *.log
 node_modules/.tmp/
 .tokensave
-/private/

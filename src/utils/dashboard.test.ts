@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { SpacecatOpportunity } from '../types';
 import {
   buildSiteRow,
@@ -7,22 +7,17 @@ import {
   getOverviewCounts,
   groupRows,
   indicatorFromOpportunities,
+  isInternalTestCustomer,
   isLlmoSite,
+  isPaidCustomerSite,
+  resolveCustomerGroup,
   toCsv,
   toCsvHealthSummary,
   toCsvSitesTable,
 } from './dashboard';
 
-vi.mock('../data/customerSelection', () => ({
-  CUSTOMER_SELECTION: {
-    paidSiteIds: ['site-paid', 'site-customer'],
-    internalTestCustomers: ['release notes', 'https://demo.example'],
-    securityProbeSites: ['https://probe.example'],
-    internalTestOrganizations: ['org-internal'],
-  },
-}));
-
-const ALLOWLISTED_SITE_ID = 'site-paid';
+// An ID present in the paid export, so these cases reach the Paid classification.
+const ALLOWLISTED_SITE_ID = '5d50aa04-f1cf-42be-83f8-555524b9ae28';
 
 const site = {
   id: ALLOWLISTED_SITE_ID,
@@ -49,6 +44,152 @@ describe('dashboard transforms', () => {
   it('detects LLMO sites from list config', () => {
     expect(isLlmoSite(site)).toBe(true);
     expect(isLlmoSite({ ...site, config: null })).toBe(false);
+  });
+
+  it('filters out exported PAID sites without LLMO config before Paid selection', () => {
+    const paid = [{
+      id: 'ent-1', organizationId: 'org-1', productCode: 'LLMO', tier: 'PAID',
+    }];
+    const candidates = [
+      site,
+      { ...site, config: null },
+      { ...site, config: undefined },
+      { ...site, config: {} },
+    ];
+
+    expect(candidates.filter(isLlmoSite).filter((candidate) =>
+      isPaidCustomerSite(candidate, paid),
+    )).toEqual([site]);
+  });
+
+  it('requires both an exported site ID and a current LLMO PAID entitlement', () => {
+    const paid = [{
+      id: 'ent-1', organizationId: 'org-1', productCode: 'LLMO', tier: 'PAID',
+    }];
+    expect(isPaidCustomerSite(site, paid)).toBe(true);
+    expect(isPaidCustomerSite({ ...site, id: 'unlisted-site' }, paid)).toBe(false);
+    expect(isPaidCustomerSite(site, [])).toBe(false);
+    expect(isPaidCustomerSite(site, [{ ...paid[0], tier: 'FREE_TRIAL' }])).toBe(false);
+    expect(isPaidCustomerSite(site, [{ ...paid[0], productCode: 'ASO' }])).toBe(false);
+    expect(resolveCustomerGroup('PAID', 'unlisted-site')).toBe('trial');
+  });
+
+  it('classifies an exported customer with LLMO config as Paid', () => {
+    const candidate = {
+      ...site,
+      id: '5f85a04a-166b-4efb-aeed-bc11b98599a9',
+      baseURL: 'https://ie.edu',
+    };
+    const paid = [{
+      id: 'ent-1', organizationId: 'org-1', productCode: 'LLMO', tier: 'PAID',
+    }];
+
+    expect(isLlmoSite(candidate)).toBe(true);
+    expect(isPaidCustomerSite(candidate, paid)).toBe(true);
+    expect(buildSiteRow({
+      site: candidate, entitlements: paid, opportunities: [],
+    }).customerGroup).toBe('paid');
+  });
+
+  it('classifies a newly included organization-export site as Paid when viewer gates pass', () => {
+    const candidate = {
+      ...site,
+      id: '01a01503-bea1-715a-96bb-b68a00805906',
+      baseURL: 'https://uk.trex.com',
+    };
+    const paid = [{
+      id: 'ent-1', organizationId: 'org-1', productCode: 'LLMO', tier: 'PAID',
+    }];
+
+    expect(isPaidCustomerSite(candidate, paid)).toBe(true);
+    expect(buildSiteRow({
+      site: candidate, entitlements: paid, opportunities: [],
+    }).customerGroup).toBe('paid');
+    expect([{ ...candidate, config: undefined }].filter(isLlmoSite)).toEqual([]);
+    expect(isPaidCustomerSite(candidate, [{ ...paid[0], tier: 'FREE_TRIAL' }])).toBe(false);
+  });
+
+  it('keeps a site removed from the latest export in Trial despite its PAID organization', () => {
+    const candidate = { ...site, id: '01a159bb-ba7e-7fe0-a53b-8a7a8c5bd21d' };
+    const paid = [{
+      id: 'ent-1', organizationId: 'org-1', productCode: 'LLMO', tier: 'PAID',
+    }];
+
+    expect(isPaidCustomerSite(candidate, paid)).toBe(false);
+    expect(buildSiteRow({
+      site: candidate, entitlements: paid, opportunities: [],
+    }).customerGroup).toBe('trial');
+  });
+
+  it('keeps an exported demo in the snapshot but excludes it from customer groups', () => {
+    const candidate = {
+      ...site,
+      id: '34bb79c0-c901-4241-929e-a9c930560e03',
+      baseURL: 'https://frescopa.coffee',
+    };
+    const paid = [{
+      id: 'ent-1', organizationId: 'org-1', productCode: 'LLMO', tier: 'PAID',
+    }];
+
+    expect(isLlmoSite(candidate)).toBe(true);
+    expect(isPaidCustomerSite(candidate, paid)).toBe(false);
+    const grouped = groupRows([
+      buildSiteRow({ site: candidate, entitlements: paid, opportunities: [] }),
+    ]);
+    expect(grouped.paid).toEqual([]);
+    expect(grouped.trial).toEqual([]);
+  });
+
+  it('does not exclude real customers through hostname substrings or generic test/demo names', () => {
+    const identity = {
+      siteName: 'Demo customer',
+      baseURL: 'https://test-tokowaka.testaemcloud.com.customer.example',
+      organizationId: 'org-1',
+    };
+    expect(isInternalTestCustomer(identity)).toBe(false);
+    expect(isInternalTestCustomer({
+      ...identity, siteName: 'Latest customer', baseURL: 'https://customer.example',
+    })).toBe(false);
+  });
+
+  it('keeps production counterparts and ambiguous sites out of the explicit exclusions', () => {
+    for (const baseURL of [
+      'https://lumen.com',
+      'https://simplicityfunerals.com.au',
+      'https://colgate.com.br',
+      'https://colgateprofessional.com',
+      'https://tigers-eye.com',
+      'https://author-prod.chevronlubricants.com',
+      'https://onlinetoolspt.ups.com',
+      'https://publish-p162052-e1759631.adobeaemcloud.com',
+      'https://acsstage.lumen.com.customer.example',
+      'https://one.walmart.com',
+      'https://www.walmart.com',
+      'https://racq.com.au',
+      'https://casio.com',
+      'https://mauriceblackburn.com.au',
+      'https://beta.asianpaints.com',
+      'https://implementationdetails.dev',
+      'https://main--aem-codesync-trial--akshaymagapu.aem.live',
+      'https://author-p180456-e1974552.adobeaemcloud.com',
+      'https://author-p180853-e1900815.adobeaemcloud.com',
+      'https://main--cm-p178902-s19953-geezer--adobe-cm.aem.live',
+      'https://otempobetim.com.br',
+    ]) {
+      expect(isInternalTestCustomer({
+        siteName: 'Customer', baseURL, organizationId: 'org-1',
+      })).toBe(false);
+    }
+    expect(isInternalTestCustomer({
+      siteName: 'Customer',
+      baseURL: 'https://media.vw.com',
+      organizationId: '160da889-39a2-4019-9315-82bbd4da59e7',
+    })).toBe(false);
+    expect(isInternalTestCustomer({
+      siteName: 'Customer',
+      baseURL: 'https://nominis.cef.fr',
+      organizationId: '3303e0e5-9044-4e40-bc28-81dec3c3c531',
+    })).toBe(false);
   });
 
   it('prefers visible new opportunities over ignored opportunities', () => {
@@ -132,15 +273,66 @@ describe('dashboard transforms', () => {
   });
 
   it('excludes internal test customers from the paid group', () => {
-    const entitlements = [
+    const paidEntitlements = [
       { id: 'ent-1', organizationId: 'org-1', productCode: 'LLMO', tier: 'PAID' },
     ];
     const rows = [
-      { ...site, name: 'Release Notes' },
-      { ...site, baseURL: 'https://demo.example/' },
-      { ...site, baseURL: 'https://probe.example/' },
-      { ...site, id: 'site-customer', name: 'Customer' },
-    ].map((candidate) => buildSiteRow({ site: candidate, entitlements, opportunities: [] }));
+      buildSiteRow({
+        site: { ...site, name: 'LLMO Release Notes' },
+        entitlements: paidEntitlements,
+        opportunities: [],
+      }),
+      buildSiteRow({
+        site: {
+          ...site,
+          id: 'site-2',
+          baseURL: 'https://test-tokowaka.testaemcloud.com/',
+          name: 'Tokowaka test',
+        },
+        entitlements: paidEntitlements,
+        opportunities: [],
+      }),
+      buildSiteRow({
+        site: {
+          ...site,
+          id: 'site-3',
+          baseURL: 'https://optimize-at-edge.testaemcloud.com/',
+          name: 'Optimize at Edge',
+        },
+        entitlements: paidEntitlements,
+        opportunities: [],
+      }),
+      buildSiteRow({
+        site: {
+          ...site,
+          id: 'site-4',
+          baseURL: 'https://tokowaka.now',
+          name: 'Tokowaka now',
+        },
+        entitlements: paidEntitlements,
+        opportunities: [],
+      }),
+      buildSiteRow({
+        site: {
+          ...site,
+          id: 'site-5',
+          baseURL: 'https://buzios-vibe.com/',
+          name: 'Buzios Vibe',
+        },
+        entitlements: paidEntitlements,
+        opportunities: [],
+      }),
+      buildSiteRow({
+        site: {
+          ...site,
+          id: 'ae3db999-a749-4fbd-a21b-2318094808b5',
+          baseURL: 'https://customer.example.com',
+          name: 'Customer',
+        },
+        entitlements: paidEntitlements,
+        opportunities: [],
+      }),
+    ];
 
     expect(groupRows(rows).paid.map((row) => row.siteName)).toEqual(['Customer']);
   });
