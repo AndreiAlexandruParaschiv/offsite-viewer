@@ -63,6 +63,44 @@ const INTERNAL_TEST_CUSTOMERS = new Set([
   'https://xyz.com',
   'https://departmentof.com',
   'https://abhishek.com',
+  'https://frescopa.coffee',
+  'https://acsstage.lumen.com',
+  'https://stage.simplicityfunerals.com.au',
+  'https://stageaem-cloud.colgate.com.br',
+  'https://stageaem-cloud.colgateprofessional.com',
+  'https://author-p180456-e1899517.adobeaemcloud.com',
+  'https://author-p179752-e1890357.adobeaemcloud.com',
+  'https://author-p179752-e1899461.adobeaemcloud.com',
+  'https://author-p219802-e2265084.adobeaemcloud.com',
+  'https://main--da-block-collection--aemsites.aem.live',
+  'https://main--clotton-eds--clotton.aem.live',
+  'https://main--cm-p179752-s20599-clotton-test--adobe-cm.aem.live',
+  'https://main--project-elmo-ui-demo-data--adobe.aem.live',
+  'https://main--aso-preflight--adobe-rnd.aem.live',
+  'https://publish-p162052-e1733105.adobeaemcloud.com',
+  'https://publish-p15854-e1797721.adobeaemcloud.com',
+  'https://main--aem-security-eds-testbed--oneadobe.aem.live',
+  'https://preflight-stg-one.walmart.com',
+  'https://develop--racq-eds--racqgroup.aem.live',
+  'https://main--da-test--andreituicu.aem.page',
+  'https://aso-da-test.codebyjan.ch',
+  'https://author-p158174-e2156083.ethos13-prod-jpn4.rv.dev.adobeaemcloud.com',
+  'https://author-p46937-e1919768.ethos38-prod-nld2.rv.dev.adobeaemcloud.com',
+  'https://author-p52066-e1909939.ethos38-prod-va7.rv.dev.adobeaemcloud.com',
+  'https://author-p59957-e1921763.ethos38-prod-va7.rv.dev.adobeaemcloud.com',
+  'https://author-p202605-e2101243.adobeaemcloud.com',
+  'https://author-p46933-e2061590.ethos38-prod-aus5.rv.dev.adobeaemcloud.com',
+  'https://demo-experiments.aem.live',
+  'https://main--wknd--hlxsites.hlx.page',
+  'https://main--wknd--hlxsites.hlx.live',
+  'https://main--aem-wknd-eds-ue--ckkovac.aem.live',
+  'https://main--da-ew-mimi-test--mimchome.aem.page',
+  'https://main--wknd-backlink-test--mimchome.aem.live',
+  'https://main--cm-p180456-s20583-613-preflight--adobe-cm.aem.live',
+  'https://main--aemtutorial--dogadogan.aem.page',
+  'https://main--tr-aso-crosswalk-test--tr1eder.aem.live',
+  'https://main--wknd-backlink-test-sharepoint--mimchome.aem.live',
+  'https://test.frescopa.coffee',
 ]);
 
 // Sites that are SSRF / DNS-rebinding security probes, not real onboarding
@@ -394,7 +432,7 @@ export const customerGroupFromTier = (tier: string | undefined): CustomerGroup =
   return 'free';
 };
 
-// Paid customers are restricted to the curated PAID_SITE_ID_ALLOWLIST — a
+// Paid customers are restricted to the exported PAID_SITE_ID_ALLOWLIST — a
 // site with a live PAID entitlement that isn't on that list is bucketed
 // under Trial instead of Paid (not hidden). Only affects the 'paid' case;
 // trial/free classification from the entitlement tier is unchanged.
@@ -407,6 +445,17 @@ export const resolveCustomerGroup = (tier: string | undefined, siteId: string): 
 
   return rawGroup;
 };
+
+export const isPaidCustomerSite = (
+  site: SpacecatSite,
+  entitlements: SpacecatEntitlement[],
+): boolean =>
+  resolveCustomerGroup(findLlmoEntitlement(entitlements)?.tier, site.id) === 'paid' &&
+  !isInternalTestCustomer({
+    siteName: site.name || site.baseURL,
+    baseURL: site.baseURL,
+    organizationId: site.organizationId,
+  });
 
 export const buildSiteRow = ({
   site,
