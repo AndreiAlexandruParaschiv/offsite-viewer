@@ -27,6 +27,7 @@ import {
   groupRows,
   isInternalTestCustomer,
   isLlmoSite,
+  isPaidCustomerSite,
   resolveCustomerGroup,
   toCsvExportBrief,
 } from './utils/dashboard';
@@ -209,21 +210,13 @@ function App() {
       loadContextRef.current = { client, sites: llmoSites, entitlementsByOrg, semrushByOrg };
       setHasLoadContext(true);
 
-      const customerGroupBySite = new Map(
-        llmoSites.map((site) => [
-          site.id,
-          resolveCustomerGroup(
-            findLlmoEntitlement(entitlementsByOrg.get(site.organizationId) ?? [])?.tier,
-            site.id,
-          ),
-        ]),
-      );
-
       // Initial Load fetches Paid sites only. Trial (which can be thousands of
       // rows) is loaded on demand via its own button — rendering that many
       // rows at once is what pushes the tab into an "Aw, Snap!" crash.
       setTrialLoaded(false);
-      const paidSites = llmoSites.filter((site) => customerGroupBySite.get(site.id) === 'paid');
+      const paidSites = llmoSites.filter((site) =>
+        isPaidCustomerSite(site, entitlementsByOrg.get(site.organizationId) ?? []),
+      );
 
       setProgress(`Loading opportunities for ${paidSites.length} paid sites`);
 
@@ -263,9 +256,14 @@ function App() {
     }
 
     const groupSites = context.sites.filter((site) => {
+      const entitlements = context.entitlementsByOrg.get(site.organizationId) ?? [];
+      if (group === 'paid') {
+        return isPaidCustomerSite(site, entitlements);
+      }
+
       const isInGroup =
         resolveCustomerGroup(
-          findLlmoEntitlement(context.entitlementsByOrg.get(site.organizationId) ?? [])?.tier,
+          findLlmoEntitlement(entitlements)?.tier,
           site.id,
         ) === group;
 

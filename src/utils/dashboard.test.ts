@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { SpacecatOpportunity } from '../types';
 import {
   buildSiteRow,
@@ -13,10 +13,16 @@ import {
   toCsvSitesTable,
 } from './dashboard';
 
-// A real site ID from PAID_SITE_ID_ALLOWLIST (src/data/paidSiteAllowlist.ts)
-// so buildSiteRow's PAID-tier tests actually land in the 'paid' group rather
-// than being demoted to 'trial' as an unlisted site would be.
-const ALLOWLISTED_SITE_ID = '5d50aa04-f1cf-42be-83f8-555524b9ae28';
+vi.mock('../data/customerSelection', () => ({
+  CUSTOMER_SELECTION: {
+    paidSiteIds: ['site-paid', 'site-customer'],
+    internalTestCustomers: ['release notes', 'https://demo.example'],
+    securityProbeSites: ['https://probe.example'],
+    internalTestOrganizations: ['org-internal'],
+  },
+}));
+
+const ALLOWLISTED_SITE_ID = 'site-paid';
 
 const site = {
   id: ALLOWLISTED_SITE_ID,
@@ -126,68 +132,15 @@ describe('dashboard transforms', () => {
   });
 
   it('excludes internal test customers from the paid group', () => {
-    const paidEntitlements = [
+    const entitlements = [
       { id: 'ent-1', organizationId: 'org-1', productCode: 'LLMO', tier: 'PAID' },
     ];
     const rows = [
-      buildSiteRow({
-        site: { ...site, name: 'LLMO Release Notes' },
-        entitlements: paidEntitlements,
-        opportunities: [],
-      }),
-      buildSiteRow({
-        site: {
-          ...site,
-          id: 'site-2',
-          baseURL: 'https://test-tokowaka.testaemcloud.com/',
-          name: 'Tokowaka test',
-        },
-        entitlements: paidEntitlements,
-        opportunities: [],
-      }),
-      buildSiteRow({
-        site: {
-          ...site,
-          id: 'site-3',
-          baseURL: 'https://optimize-at-edge.testaemcloud.com/',
-          name: 'Optimize at Edge',
-        },
-        entitlements: paidEntitlements,
-        opportunities: [],
-      }),
-      buildSiteRow({
-        site: {
-          ...site,
-          id: 'site-4',
-          baseURL: 'https://tokowaka.now',
-          name: 'Tokowaka now',
-        },
-        entitlements: paidEntitlements,
-        opportunities: [],
-      }),
-      buildSiteRow({
-        site: {
-          ...site,
-          id: 'site-5',
-          baseURL: 'https://buzios-vibe.com/',
-          name: 'Buzios Vibe',
-        },
-        entitlements: paidEntitlements,
-        opportunities: [],
-      }),
-      buildSiteRow({
-        site: {
-          ...site,
-          // A second real allowlisted ID (accesscorp.com) — must differ from
-          // ALLOWLISTED_SITE_ID so this row isn't just a duplicate.
-          id: '019e9871-8ee8-7856-803d-348f9324cf7f',
-          baseURL: 'https://customer.example.com',
-          name: 'Customer',
-        },
-        entitlements: paidEntitlements,
-        opportunities: [],
-      }),
-    ];
+      { ...site, name: 'Release Notes' },
+      { ...site, baseURL: 'https://demo.example/' },
+      { ...site, baseURL: 'https://probe.example/' },
+      { ...site, id: 'site-customer', name: 'Customer' },
+    ].map((candidate) => buildSiteRow({ site: candidate, entitlements, opportunities: [] }));
 
     expect(groupRows(rows).paid.map((row) => row.siteName)).toEqual(['Customer']);
   });

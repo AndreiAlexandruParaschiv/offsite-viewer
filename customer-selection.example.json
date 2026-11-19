@@ -1,0 +1,6 @@
+{
+  "paidSiteIds": ["site-paid", "site-customer"],
+  "internalTestCustomers": ["release notes", "https://demo.example"],
+  "securityProbeSites": ["https://probe.example"],
+  "internalTestOrganizations": ["org-internal"]
+}

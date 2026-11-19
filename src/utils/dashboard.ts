@@ -1,3 +1,4 @@
+import { CUSTOMER_SELECTION } from '../data/customerSelection';
 import { PAID_SITE_ID_ALLOWLIST } from '../data/paidSiteAllowlist';
 import { formatWeekLabel, isoWeeksAgo, opportunityTouchedInWeeks } from './weekFilter';
 import {
@@ -32,77 +33,13 @@ export const spacecatAuditCommand = (baseURL: string, auditType = 'offsite-brand
 };
 
 const LLMO_PRODUCT_HINTS = ['llmo', 'LLMO', 'ai-visibility', 'AI_VISIBILITY', 'llm_optimizer', 'LLM_OPTIMIZER'];
-// Internal/test/dev-preview sites that shouldn't show up as real customers,
-// in either the paid or trial tables.
-const INTERNAL_TEST_CUSTOMERS = new Set([
-  'llmo release notes',
-  'https://test-tokowaka.testaemcloud.com',
-  'https://optimize-at-edge.testaemcloud.com',
-  'https://tokowaka.now',
-  'buzios-vibe.com',
-  'https://buzios-vibe.com',
-  'http://buzios-vibe.com',
-  'https://main--cloudfront-setup--ssilare-adobe.aem.page',
-  'https://main--frescopa-dba--ktzmishra.aem.live',
-  'https://frescopa.aem-screens.net',
-  'https://ravitest.com',
-  'https://testingmypoc.com',
-  'https://author-p180456-e1899464.adobeaemcloud.com',
-  'https://frescopa-unibuc.testaemcloud.com',
-  'https://llmo-onboardtest10.com',
-  'https://main--fastowl28790--aemsitestrial.aem.page',
-  'https://main--wknd-universal--tuckerelliott.aem.page',
-  'https://test.net',
-  'https://tester.com',
-  'https://testing.com',
-  'https://testurl.com',
-  'https://testuser.com',
-  'https://abcxyztest.com',
-  'https://agldstqtrtest.digital.agl.com.au',
-  'https://playwright-503-repro.com',
-  'https://xyz.com',
-  'https://departmentof.com',
-  'https://abhishek.com',
-]);
-
-// Sites that are SSRF / DNS-rebinding security probes, not real onboarding
-// attempts — someone (or an automated scanner) testing whether the
-// site-onboarding flow can be tricked into fetching an attacker-controlled or
-// internal-network URL. Kept separate from INTERNAL_TEST_CUSTOMERS because
-// these represent a security concern worth escalating to whoever owns that
-// flow, not routine internal/dev noise. Three distinct techniques seen so
-// far:
-//   - nip.io / sslip.io: wildcard DNS services that resolve a subdomain
-//     encoding an IP address (e.g. "130-61-169-1.nip.io" -> 130.61.169.1) to
-//     that literal IP — used to make a "hostname" resolve to an internal or
-//     cloud-metadata address despite looking like an ordinary domain.
-//   - A bare link-local address (169.254.169.254) — the AWS/Azure/GCP cloud
-//     instance metadata endpoint, a classic SSRF target.
-//   - oastify.com and the interactsh-style domain below: out-of-band
-//     interaction services (Burp Suite Collaborator, Interactsh) that let a
-//     scanner detect a "blind" SSRF by checking whether the target server
-//     ever made an outbound request to a throwaway generated subdomain.
-const SECURITY_PROBE_SITES = new Set([
-  'http://169-254-169-254.nip.io/latest/meta-data',
-  'https://169.254.169.254',
-  'http://823da901.sslip.io',
-  'http://cachebuster1.130.61.169.1.nip.io',
-  'http://cachebuster2-130-61-169-1.nip.io',
-  'http://cachebuster3-823da901.nip.io',
-  'http://cachebuster4-823da901.sslip.io',
-  'https://t3xvtcra96mvq6dyrq06oyqw2n8ew7kw.oastify.com/path/working/test',
-  'http://0532vjthbdo2sdf5tx2dq5s34ualyhm6.oastify.com',
-  'https://15e52187b74c53d6.d9fj7bnvm6m661e3pl90cbdru1s',
-]);
-
-// Whole orgs known to be internal/test accounts — every site under one of
-// these is excluded, present and future, rather than needing each new
-// throwaway domain added to INTERNAL_TEST_CUSTOMERS by name as it appears.
-// Deliberately empty for now: a6286f15-86c3-4f18-b4ee-f5f37c894248 (the
-// ravitest.com org) also owns wsop.com, whose status as test-vs-real is
-// still unconfirmed — add it here (not just its other 3 sites above) once
-// that's settled.
-const INTERNAL_TEST_ORGANIZATIONS = new Set<string>([]);
+const INTERNAL_TEST_CUSTOMERS = new Set(
+  CUSTOMER_SELECTION.internalTestCustomers.map((value) => value.toLowerCase().replace(/\/+$/, '')),
+);
+const SECURITY_PROBE_SITES = new Set(
+  CUSTOMER_SELECTION.securityProbeSites.map((value) => value.toLowerCase().replace(/\/+$/, '')),
+);
+const INTERNAL_TEST_ORGANIZATIONS = new Set(CUSTOMER_SELECTION.internalTestOrganizations);
 
 // Regions the offsite audits actually run for. Hardcoded copy of the
 // audit-worker's accepted set (US/GB/CA/AU/IE/NZ) — a site whose region is
@@ -195,6 +132,19 @@ export const countCurrentSuggestions = (suggestions: SpacecatSuggestion[]): numb
 
 const normalizeCustomerIdentity = (value: string) => value.trim().toLowerCase().replace(/\/+$/, '');
 
+const customerHostname = (value: string): string => {
+  try {
+    const url = new URL(value.includes('://') ? value : `https://${value}`);
+    return url.hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+};
+
+const EXCLUDED_CUSTOMER_HOSTNAMES = new Set(
+  [...INTERNAL_TEST_CUSTOMERS, ...SECURITY_PROBE_SITES].map(customerHostname).filter(Boolean),
+);
+
 // Accepts anything with a siteName/baseURL/organizationId — SiteOpportunityRow
 // qualifies, but so does a plain object derived straight from a SpacecatSite,
 // before a full row has been built.
@@ -211,6 +161,7 @@ export const isInternalTestCustomer = (identity: {
     INTERNAL_TEST_CUSTOMERS.has(baseURL) ||
     SECURITY_PROBE_SITES.has(siteName) ||
     SECURITY_PROBE_SITES.has(baseURL) ||
+    EXCLUDED_CUSTOMER_HOSTNAMES.has(customerHostname(baseURL)) ||
     INTERNAL_TEST_ORGANIZATIONS.has(identity.organizationId)
   );
 };
@@ -394,7 +345,7 @@ export const customerGroupFromTier = (tier: string | undefined): CustomerGroup =
   return 'free';
 };
 
-// Paid customers are restricted to the curated PAID_SITE_ID_ALLOWLIST — a
+// Paid customers are restricted to the local PAID_SITE_ID_ALLOWLIST — a
 // site with a live PAID entitlement that isn't on that list is bucketed
 // under Trial instead of Paid (not hidden). Only affects the 'paid' case;
 // trial/free classification from the entitlement tier is unchanged.
@@ -407,6 +358,18 @@ export const resolveCustomerGroup = (tier: string | undefined, siteId: string): 
 
   return rawGroup;
 };
+
+export const isPaidCustomerSite = (
+  site: SpacecatSite,
+  entitlements: SpacecatEntitlement[],
+): boolean =>
+  isLlmoSite(site) &&
+  resolveCustomerGroup(findLlmoEntitlement(entitlements)?.tier, site.id) === 'paid' &&
+  !isInternalTestCustomer({
+    siteName: site.name || site.baseURL,
+    baseURL: site.baseURL,
+    organizationId: site.organizationId,
+  });
 
 export const buildSiteRow = ({
   site,

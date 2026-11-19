@@ -27,7 +27,8 @@ The viewer:
 
 - pages through `GET /sites?limit=500` until all sites are loaded
 - keeps LLMO sites where `site.config.llmo` exists
-- loads `GET /sites/{siteId}/opportunities` for every LLMO site
+- loads `GET /sites/{siteId}/opportunities` for eligible Paid sites initially;
+  Trial loads on demand
 - filters opportunity types:
   - `reddit-analysis`
   - `youtube-analysis`
@@ -39,6 +40,20 @@ The viewer:
 - groups visible tables by LLMO entitlement tier:
   - `PAID` -> Paid customers
   - `FREE_TRIAL` / `TRIAL` -> Trial customers
+
+## Local customer selection
+
+Copy `customer-selection.example.json` to `private/customer-selection.local.json`.
+Populate its four arrays with the approved Paid site IDs, test customers, probe
+sites and excluded organizations. The `private/` directory is ignored by Git.
+
+Paid requires snapshot membership, `config.llmo` and a current LLMO PAID entitlement.
+Test exclusions apply to both Paid and Trial, matching exact names or hostnames
+across schemes and paths. Excluded Paid sites are skipped before opportunity loading.
+Without a local file, Paid is empty; invalid files fail the build. Rebuild after edits.
+
+Local lists are included in browser bundles. Use private hosting for private lists;
+never include them in public deployments or store credentials in this file.
 
 ## Build and test
 
